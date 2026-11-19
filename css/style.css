@@ -643,7 +643,8 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 }
 
 /* 선택된 탭: 색 + 굵기 + 밑줄 */
-.tab[aria-selected="true"] {
+.tab[aria-selected="true"],
+.tab[aria-current="page"] {
   color: var(--accent);
   font-weight: 700;
   border-bottom-color: var(--accent);
@@ -687,6 +688,50 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 
 .habit { display: grid; gap: 4px; }
 .habit p { margin: 0; }
+
+/* ---------- 플래너 ---------- */
+
+a.tab { display: inline-flex; align-items: center; text-decoration: none; }
+.chip-static { text-decoration: none; }
+
+.planner-strip { display: grid; gap: var(--gap); }
+.seven-fold summary, details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.seven-fold ol { margin: 0; padding-left: 1.3em; }
+
+.planner-nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); }
+.planner-nav input { min-height: 44px; font: inherit; max-width: 100%; }
+
+.dday { margin: 0; }
+.month-title { margin: 0; }
+
+.goal-row input, .field input[type="text"] { flex: 1; min-width: 0; min-height: 44px; font: inherit; }
+.woop textarea { width: 100%; font: inherit; }
+
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.cal-head { text-align: center; font-size: 14px; color: var(--muted); }
+.cal-cell {
+  min-height: 56px;
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+button.cal-cell { cursor: pointer; }
+.cal-empty { background: transparent; border-color: transparent; }
+.cal-today { border: 2px solid var(--accent); font-weight: 700; }
+.cal-today-text { font-size: 12px; color: var(--accent); }
+.cal-selected { background: var(--accent-weak); outline: 2px dashed var(--accent); }
+.cal-events { display: grid; font-size: 12px; line-height: 1.3; }
+.cal-ev { white-space: nowrap; }
+.event-list { list-style: none; margin: 0; padding: 0; }
+.toggle-row input[type="checkbox"] { width: 24px; height: 24px; }
+.toggle-row label { flex: 1; min-height: 44px; display: flex; align-items: center; }
 
 /* ---------- 일곱 가지 전략 ---------- */
 
