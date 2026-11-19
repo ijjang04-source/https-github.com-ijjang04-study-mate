@@ -996,3 +996,50 @@ a.chip { text-decoration: none; }
 
 /* ---------- 설정 ---------- */
 .settings input[type="text"] { width: 100%; max-width: 100%; box-sizing: border-box; }
+
+/* ---------- 설정(20단계) ---------- */
+#topbar a.btn { text-decoration: none; }
+.settings .card h3 { margin: 0; }
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: 44px;
+}
+.radio-row input { width: 22px; height: 22px; flex: none; }
+.settings fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.settings legend { font-weight: 600; padding: 0; }
+.settings input[type="file"] { max-width: 100%; font: inherit; }
+.warn, .backup-info.warn { color: var(--warn); font-weight: 600; }
+.usage-bar {
+  height: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.usage-bar > span { display: block; height: 100%; background: var(--accent); }
+.btn-danger {
+  color: #fff;
+  background: #b42318;
+  border-color: #b42318;
+}
+@media (prefers-color-scheme: dark) {
+  .btn-danger { background: #d9534f; border-color: #d9534f; color: #111; }
+}
+
+/* ---------- 안정성: 저장 안 되는 창 경고 띠 ---------- */
+.persist-banner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--gap) calc(var(--gap) * 2);
+  font-weight: 600;
+  color: var(--text);
+  background: color-mix(in srgb, var(--warn) 22%, var(--bg));
+  border-bottom: 2px solid var(--warn);
+}
+.persist-banner::before { content: '⚠ '; }
+/* 상단 바: 앱 이름은 한 줄로, 좁으면 닉네임이 줄어든다(…) */
+#topbar .app-name { white-space: nowrap; flex: 0 0 auto; margin-right: auto; }
+#topbar .btn { flex: none; padding-left: 12px; padding-right: 12px; }
+.settings input[type="file"] { min-height: 44px; }
+.settings input[type="file"]::file-selector-button { min-height: 44px; padding: 0 16px; font: inherit; margin-right: 8px; }

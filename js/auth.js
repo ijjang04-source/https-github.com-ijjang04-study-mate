@@ -97,6 +97,8 @@
     return /^\d{1,3}$/.test(s) ? parseInt(s, 10) : NaN;
   }
 
+  const LOGOUT_CHOICES = [15, 30, 60];
+
   function norm(nickname) {
     return String(nickname || '').trim().toLowerCase();
   }
@@ -108,7 +110,13 @@
     const now = deps.now || (() => Date.now());
     const session = deps.session || safeSession();
     const config = () => deps.config || SM.config;
-    const timeoutMs = () => (config().autoLogoutMinutes || 30) * 60 * 1000;
+    // 기기 설정(#/settings)에서 고른 값이 있으면 그것을, 없으면 config 값을 쓴다.
+    const autoLogoutMinutes = () => {
+      const d = store.get(SM.keys.device(), null);
+      const m = d && LOGOUT_CHOICES.indexOf(d.autoLogoutMinutes) !== -1 ? d.autoLogoutMinutes : null;
+      return m || config().autoLogoutMinutes || 30;
+    };
+    const timeoutMs = () => autoLogoutMinutes() * 60 * 1000;
 
     // --- 실패 횟수·잠금(sessionStorage) ---
     function readFails() {
@@ -287,6 +295,7 @@
 
     return {
       login, logout, current, restore, touch, watch, roster, lockStatus,
+      checkNickname, autoLogoutMinutes, LOGOUT_CHOICES,
       hash, sha256Hex, fallbackHash, fnv1a64, hasSubtle, verifyCode
     };
   }

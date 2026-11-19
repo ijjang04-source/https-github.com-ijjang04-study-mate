@@ -43,6 +43,8 @@
       ]
     },
 
-    botName: '공부 메이트'
+    botName: '공부 메이트',
+
+    version: '0.20.0'
   };
 })(window.SM = window.SM || {});

@@ -59,6 +59,7 @@
 
   let currentCleanup = null;
   let renderToken = 0;
+  let currentKeys = new Set();
 
   function runCleanup() {
     const fn = currentCleanup;
@@ -92,6 +93,8 @@
     const { route, params } = decision;
     runCleanup();
 
+    // 이 화면이 읽는 키를 모은다(다른 창에서 바뀌면 다시 그리려고)
+    currentKeys = SM.store.track ? SM.store.track() : new Set();
     let result;
     try {
       result = await route.render(params);
@@ -134,7 +137,85 @@
     render();
   }
 
-  SM.router = { match, decide, render, navigate, start, DEFAULT_PATH, LOGIN_PATH };
+  // ---------- 다른 창(탭)에서 바뀐 내용 ----------
+
+  // 이 키들은 화면 내용이 아니라서 다시 그리지 않는다.
+  const IGNORED_KEYS = ['meta', 'device'];
+
+  /** 다른 창에서 바뀐 key 때문에 지금 화면을 다시 그려야 하나 */
+  function needsRefresh(key, keys) {
+    return !!key && IGNORED_KEYS.indexOf(key) === -1 && !!keys && keys.has(key);
+  }
+
+  /** 지금 #view 안에서 무언가를 입력하는 중인가 */
+  function isEditing() {
+    const a = document.activeElement;
+    const view = document.getElementById('view');
+    if (!a || !view || !view.contains(a)) return false;
+    return a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable ||
+      (a.tagName === 'INPUT' && ['button', 'submit', 'checkbox', 'radio', 'file', 'range'].indexOf(a.type) === -1);
+  }
+
+  const pendingKeys = new Set();
+  let refreshTimer = null;
+
+  // 입력이 끝난(포커스가 빠진) 뒤 500ms 디바운스 저장이 먼저 끝나도록 조금 기다린다.
+  const REFRESH_AFTER_EDIT_MS = 700;
+
+  function scheduleRefresh(delay) {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      if (!pendingKeys.size) return;
+      if (isEditing()) return; // 입력 중이면 덮어쓰지 않는다. focusout 때 다시 시도
+      // 다시 그리기 전에 이 창의 '처음 읽은 값'을 잊어서 새 값을 기준으로 삼게 한다.
+      pendingKeys.forEach((k) => { if (SM.store.forget) SM.store.forget(k); });
+      pendingKeys.clear();
+      render();
+      SM.ui.toast('다른 창에서 바뀐 내용을 불러왔어.');
+    }, delay);
+  }
+
+  function onExternalChange(key) {
+    if (key === null || key === SM.keys.session()) { render(); return; }
+    if (!needsRefresh(key, currentKeys)) {
+      // 지금 화면이 안 쓰는 키: 다음에 읽을 때 새 값을 기준으로
+      if (SM.store.forget) SM.store.forget(key);
+      return;
+    }
+    pendingKeys.add(key);
+    scheduleRefresh(isEditing() ? REFRESH_AFTER_EDIT_MS : 50);
+  }
+
+  // ---------- 전역 오류 ----------
+
+  let lastErrorToast = 0;
+  function reportError(kind, detail) {
+    // 저장된 데이터는 건드리지 않고, 알리기만 한다.
+    console.error('[공부 메이트] ' + kind, detail);
+    const now = Date.now();
+    if (now - lastErrorToast < 5000) return;
+    lastErrorToast = now;
+    try { SM.ui.toast('문제가 생겼어. 새로고침해 볼래?', 4000); } catch (e) { /* 무시 */ }
+  }
+
+  function bindGlobalErrors() {
+    window.addEventListener('error', (e) => {
+      reportError('오류', e && (e.error || { message: e.message, at: e.filename + ':' + e.lineno }));
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      reportError('처리되지 않은 Promise 오류', e && e.reason);
+    });
+  }
+
+  function showPersistBanner() {
+    if (SM.store.isPersistent || document.getElementById('persist-banner')) return;
+    const bar = SM.ui.el('div', { id: 'persist-banner', class: 'persist-banner', role: 'alert', text: '이 창을 닫으면 기록이 사라져요. 일반 창에서 열어 주세요.' });
+    const top = document.getElementById('topbar');
+    if (top && top.parentNode) top.parentNode.insertBefore(bar, top.nextSibling);
+    else document.body.insertBefore(bar, document.body.firstChild);
+  }
+
+  SM.router = { match, decide, render, navigate, start, needsRefresh, DEFAULT_PATH, LOGIN_PATH };
 
   // ---------- 임시 화면("준비 중") ----------
 
@@ -189,17 +270,20 @@
   }
 
   function boot() {
+    bindGlobalErrors();
     SM.store.init();
+    showPersistBanner();
     SM.auth.restore();
     bindTopbar();
-    // 30분 동안 아무것도 안 하면 자동으로 나간다.
+    // 설정한 시간(기본 30분) 동안 아무것도 안 하면 자동으로 나간다.
     SM.auth.watch(() => {
       SM.ui.toast('오래 쉬어서 자동으로 나갔어. 다시 입장해 줘.', 3000);
       navigate(LOGIN_PATH);
     });
-    // 다른 탭에서 입장·나가기를 하면 이 탭도 맞춘다.
-    SM.store.onChange((key) => {
-      if (key === null || key === SM.keys.session()) render();
+    // 다른 탭에서 입장·나가기를 하거나, 지금 화면이 쓰는 키를 바꾸면 이 탭도 맞춘다.
+    SM.store.onChange(onExternalChange);
+    document.addEventListener('focusout', () => {
+      if (pendingKeys.size) scheduleRefresh(REFRESH_AFTER_EDIT_MS);
     });
     start();
   }

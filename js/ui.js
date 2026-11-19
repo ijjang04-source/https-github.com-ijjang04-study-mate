@@ -151,6 +151,50 @@
     });
   }
 
+  /**
+   * 글자를 입력받는 모달. 확인 → 입력값, 취소·Esc·바깥 클릭 → null.
+   * options: { label, okText, cancelText, placeholder, maxlength }
+   */
+  function promptDialog(message, options = {}) {
+    const previousFocus = document.activeElement;
+    return new Promise((resolve) => {
+      const id = 'dlg-' + Date.now();
+      const input = el('input', { id: id + '-in', type: 'text', autocomplete: 'off', maxlength: options.maxlength || 40, placeholder: options.placeholder || '' });
+      const cancelBtn = el('button', { type: 'button', class: 'btn btn-ghost', text: options.cancelText || '취소' });
+      const okBtn = el('button', { type: 'submit', class: 'btn btn-primary', text: options.okText || '확인' });
+      const form = el('form', {
+        class: 'modal card stack', role: 'dialog', 'aria-modal': 'true', 'aria-describedby': id + '-msg',
+        onSubmit(e) { e.preventDefault(); close(input.value); }
+      },
+        el('p', { id: id + '-msg', text: message }),
+        options.label ? el('label', { for: id + '-in', text: options.label }) : null,
+        input,
+        el('div', { class: 'row' }, cancelBtn, okBtn)
+      );
+      const backdrop = el('div', { class: 'modal-backdrop' }, form);
+      function close(result) {
+        document.removeEventListener('keydown', onKey, true);
+        backdrop.remove();
+        if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+        resolve(result);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); close(null); }
+        else if (e.key === 'Tab') {
+          const items = [input, cancelBtn, okBtn];
+          const idx = items.indexOf(document.activeElement);
+          e.preventDefault();
+          items[e.shiftKey ? (idx <= 0 ? items.length - 1 : idx - 1) : (idx + 1) % items.length].focus();
+        }
+      }
+      cancelBtn.addEventListener('click', () => close(null));
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(null); });
+      document.addEventListener('keydown', onKey, true);
+      document.body.appendChild(backdrop);
+      input.focus();
+    });
+  }
+
   function pad2(n) { return String(n).padStart(2, '0'); }
 
   /** const s = savedIndicator(); parent.append(s.node); s.set('saving' | 'saved' | 'error' | 'idle') */
@@ -172,7 +216,7 @@
     return { node, set };
   }
 
-  SM.ui = { el, clear, mount, markTab, toast, debounce, confirmDialog, savedIndicator };
+  SM.ui = { el, clear, mount, markTab, toast, debounce, confirmDialog, promptDialog, savedIndicator };
 
   // ---------- 화면 등록 ----------
   // 기능 파일(test.js, planner.js …)이 로드될 때 바로 등록할 수 있도록 ui.js에 둔다.

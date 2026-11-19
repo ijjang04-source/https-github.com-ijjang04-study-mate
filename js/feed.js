@@ -279,6 +279,52 @@
     }
 
     /** 내 계획에 마지막으로 피드를 본 뒤 달린 새 댓글 수(반응·내 댓글·숨긴 댓글 제외) */
+    // ---------- 설정·백업용(학생 한 명의 반 공유 데이터) ----------
+
+    /** 내 스냅샷·댓글의 닉네임 바꾸기 → 바꾼 개수 */
+    function renameAuthor(sid, nickname) {
+      const classId = classIdOf(sid);
+      if (!classId) return 0;
+      let n = 0;
+      const f = loadFeed(classId).map((x) => (x.sid === sid && x.nickname !== nickname ? (n++, Object.assign({}, x, { nickname })) : x));
+      const c = loadComments(classId).map((x) => (x.author === sid && x.nickname !== nickname ? (n++, Object.assign({}, x, { nickname })) : x));
+      if (n) { store.set(SM.keys.feed(classId), f); store.set(SM.keys.comments(classId), c); }
+      return n;
+    }
+
+    /** 내 스냅샷·내 댓글(반응 포함)만 지운다. 다른 친구 것은 그대로. → { snapshots, comments } */
+    function removeAllOf(sid) {
+      const classId = classIdOf(sid);
+      if (!classId) return { snapshots: 0, comments: 0 };
+      const f = loadFeed(classId);
+      const c = loadComments(classId);
+      const f2 = f.filter((x) => x.sid !== sid);
+      const c2 = c.filter((x) => x.author !== sid);
+      if (f2.length !== f.length) store.set(SM.keys.feed(classId), f2);
+      if (c2.length !== c.length) store.set(SM.keys.comments(classId), c2);
+      return { snapshots: f.length - f2.length, comments: c.length - c2.length };
+    }
+
+    /** 백업에서 내 것만 되돌린다. overwrite면 같은 항목을 바꾸고, 아니면 없는 것만 더한다. */
+    function importOwn(sid, items, overwrite) {
+      const classId = classIdOf(sid);
+      const r = { added: 0, overwritten: 0, skipped: 0 };
+      if (!classId) return r;
+      const merge = (key, list, incoming, idOf) => {
+        let changed = false;
+        ownItems(incoming, sid).forEach((item) => {
+          const at = list.findIndex((x) => idOf(x) === idOf(item));
+          if (at === -1) { list.push(item); r.added++; changed = true; }
+          else if (overwrite) { list[at] = item; r.overwritten++; changed = true; }
+          else r.skipped++;
+        });
+        if (changed) store.set(key, list);
+      };
+      merge(SM.keys.feed(classId), loadFeed(classId), (items && items.feed) || [], (x) => x.planKey);
+      merge(SM.keys.comments(classId), loadComments(classId), (items && items.comments) || [], (x) => x.id);
+      return r;
+    }
+
     function unreadList(sid) {
       const classId = classIdOf(sid);
       if (!classId) return [];
@@ -310,11 +356,16 @@
     return {
       publishWeek, unpublishWeek, syncWeek, syncMonth, buildSnapshot, list, snapshotOf,
       comments, counts, addComment, editComment, deleteComment, setHidden, react,
-      unreadFor, unreadFrom, markSeen, noticeClosed, closeNotice
+      unreadFor, unreadFrom, markSeen, noticeClosed, closeNotice,
+      renameAuthor, removeAllOf, importOwn
     };
   }
 
-  SM.createFeed = createFeed;
+  /** 반 공유 목록에서 그 학생 것만(스냅샷 sid, 댓글 author) */
+  function ownItems(list, sid) {
+    return (Array.isArray(list) ? list : []).filter((x) => x && (x.author !== undefined ? x.author === sid : x.sid === sid));
+  }
+
   SM.feed = Object.assign(createFeed({
     store: SM.store,
     profile: () => (SM.auth ? SM.auth.current() : null),
@@ -322,7 +373,8 @@
     notify: (comment, sid) => {
       if (SM.chat && typeof SM.chat.notify === 'function') SM.chat.notify(SM.chat.josa(comment.nickname, '이', '가') + ' 네 계획에 댓글을 남겼어.', { sid });
     }
-  }), { weekLabel, checkText, classIdOf, planOwner, REACTIONS, MAX_TEXT });
+  }), { weekLabel, checkText, classIdOf, planOwner, ownItems, REACTIONS, MAX_TEXT });
+  SM.createFeed = createFeed;
 })(window.SM = window.SM || {});
 
 // ---------- #/class 우리 반 ----------
