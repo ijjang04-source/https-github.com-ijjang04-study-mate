@@ -123,3 +123,23 @@ test('week: 몰림 안내 조사 을/를', () => {
   assert.equal(window.SM.planner.objectJosa('국어'), '국어를');
   assert.equal(window.SM.planner.objectJosa('과학'), '과학을');
 });
+
+test('week: 지난주에 바꾸기로 한 것 — 지운 문장은 다시 넣지 않음, 바뀌면 다시 넣음', () => {
+  const P = window.SM.planner;
+  const mine = [{ text: '만약 9시면 시작', from: null }];
+  // 처음 열 때 맨 위에 들어감
+  const first = P.carryInto(mine, '목요일엔 블록 하나만', undefined);
+  assert.deepEqual(first, [{ text: '목요일엔 블록 하나만', from: 'lastWeek' }, { text: '만약 9시면 시작', from: null }]);
+  // 이미 있으면 그대로
+  assert.deepEqual(P.carryInto(first, '목요일엔 블록 하나만', undefined), first);
+  // 학생이 지운 뒤(carryDismissed) 다시 열어도 안 들어감(앞뒤 공백 무시)
+  assert.deepEqual(P.carryInto(mine, ' 목요일엔 블록 하나만 ', '목요일엔 블록 하나만'), mine);
+  // 점검표에서 문장을 바꾸면 다시 들어감
+  assert.equal(P.carryInto(mine, '수요일엔 30분만', '목요일엔 블록 하나만')[0].text, '수요일엔 30분만');
+  // 비었으면 아무것도 안 함, 3개까지
+  assert.deepEqual(P.carryInto(mine, '  ', null), mine);
+  const three = [{ text: 'a', from: null }, { text: 'b', from: null }, { text: 'c', from: null }];
+  assert.deepEqual(P.carryInto(three, 'x', null).map((x) => x.text), ['x', 'a', 'b']);
+  // carryDismissed는 저장 형식에 남는다
+  assert.equal(P.normalizeWeek({ carryDismissed: '목요일엔 블록 하나만' }).carryDismissed, '목요일엔 블록 하나만');
+});

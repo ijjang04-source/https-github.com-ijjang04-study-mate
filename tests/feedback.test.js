@@ -141,3 +141,11 @@
     assert.equal(C.isDue('2026-11-08', W, ['2026-11-10'], false), false, '주 시작 전');
   });
 })(window.SM);
+
+test('checkin: 점검표를 다시 제출해도 지운 문장은 다시 넣지 않음', () => {
+  const C = window.SM.checkin;
+  const list = [{ text: 'a', from: null }];
+  assert.deepEqual(C.applyNextChange(list, '목요일엔 하나만', '목요일엔 하나만'), list);
+  assert.deepEqual(C.applyNextChange(list, '목요일엔 하나만', ' 목요일엔 하나만 '), list);
+  assert.deepEqual(C.applyNextChange(list, '수요일엔 30분', '목요일엔 하나만').map((x) => x.text), ['수요일엔 30분', 'a']);
+});

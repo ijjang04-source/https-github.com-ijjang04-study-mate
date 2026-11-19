@@ -679,6 +679,17 @@
     return out;
   }
 
+  /**
+   * 지난주 '다음 주에 바꿀 한 가지'를 실행 의도 맨 위에.
+   * 이미 '지난주' 항목이 있거나, 학생이 지운 문장(dismissed)과 같으면 그대로 둔다.
+   */
+  function carryInto(intentions, carry, dismissed) {
+    const list = (intentions || []).slice();
+    const t = String(carry || '').trim();
+    if (!t || t === String(dismissed || '').trim() || list.some((x) => x.from === 'lastWeek')) return list;
+    return [{ text: t, from: 'lastWeek' }].concat(list).slice(0, MAX_INTENTIONS);
+  }
+
   function nextChangeOf(week) {
     const v = week && week.review && week.review.nextChange;
     return v ? String(v).trim() : '';
@@ -818,11 +829,8 @@
     const result = latestResult();
 
     // 지난주 '다음 주에 바꿀 한 가지'를 실행 의도 맨 위에(16단계에서 채워짐)
-    const carry = nextChangeOf(instance.getWeek(prevWeek(wk)));
-    if (carry && !week.intentions.some((x) => x.from === 'lastWeek')) {
-      week.intentions.unshift({ text: carry, from: 'lastWeek' });
-      week.intentions = week.intentions.slice(0, MAX_INTENTIONS);
-    }
+    // 학생이 지운 문장(carryDismissed)은 다시 넣지 않는다
+    week.intentions = carryInto(week.intentions, nextChangeOf(instance.getWeek(prevWeek(wk))), week.carryDismissed);
 
     let dirty = false;
     // 저장할 때마다 반 피드 스냅샷도 맞춘다(공개면 갱신, 아니면 삭제)
@@ -1025,7 +1033,11 @@
           el('div', { class: 'row' }, ta,
             el('button', {
               type: 'button', class: 'btn btn-ghost', text: '삭제', 'aria-label': `실행 의도 ${i + 1} 삭제`,
-              onClick() { week.intentions.splice(i, 1); flush(); renderIntentions(); }
+              onClick() {
+                // '지난주에 바꾸기로 한 것'을 지우면 그 문장을 기억해 두고 다시 넣지 않는다
+                if (it.from === 'lastWeek') week.carryDismissed = it.text.trim();
+                week.intentions.splice(i, 1); flush(); renderIntentions();
+              }
             }))
         ));
       });
@@ -1623,7 +1635,7 @@
     monthKeyForWeek, shiftMonth, calendarRows, ddayFrom, normalize, ddayEl, stripEl, query,
     EVENT_KINDS, EXAM_KINDS,
     DAY_KEYS, normalizeWeek, addStrategyToWeek, cellEntries, subjectDays, clumped, spreadSuggestion, applySpread,
-    copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek,
+    copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek, carryInto,
     MAX_BLOCKS, UNITS, PLACES, WITH, MODES, BLOCKERS, newBlock, addBlock, moveBlock, prefillDay, suggestApplied,
     copyPlan, newDone, envHints, doneSummary, minutesText
   });

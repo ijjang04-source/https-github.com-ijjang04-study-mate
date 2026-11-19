@@ -342,11 +342,14 @@
   /**
    * 다음 주 실행 의도 맨 위에 '다음 주에 바꿀 한 가지'.
    * 이미 지난주 항목이 있으면 글만 바꾸고, 같은 문장이 있으면 그대로 둔다. 3개를 넘으면 맨 뒤를 뺀다.
+   * dismissed: 다음 주 플래너에서 학생이 지운 문장(같으면 넣지 않음)
    */
-  function applyNextChange(intentions, text) {
+  function applyNextChange(intentions, text, dismissed) {
     const list = (Array.isArray(intentions) ? intentions : []).map((x) => ({ text: String(x.text || ''), from: x.from || null }));
     const t = String(text || '').trim();
     if (!t) return list;
+    // 다음 주 플래너에서 학생이 지운 문장이면 다시 넣지 않는다(문장이 바뀌면 다시 넣는다)
+    if (t === String(dismissed || '').trim()) return list;
     const carry = list.find((x) => x.from === 'lastWeek');
     if (carry) { carry.text = t; return list; }
     if (list.some((x) => x.text.trim() === t)) return list;
@@ -665,7 +668,7 @@
       if (next) {
         const nw = SM.checkin.nextWeek(wk);
         const nextData = SM.planner.normalizeWeek(SM.planner.getWeek(nw));
-        nextData.intentions = SM.checkin.applyNextChange(nextData.intentions, next);
+        nextData.intentions = SM.checkin.applyNextChange(nextData.intentions, next, nextData.carryDismissed);
         SM.planner.saveWeek(nw, nextData);
       }
 
