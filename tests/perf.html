@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공부 메이트 성능 점검</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-auth="in">
+  <!-- 1년치 가짜 데이터(tests/seed.js)로 화면 그리기 시간을 잰다.
+       실제 기록을 건드리지 않도록 store.js 바로 뒤에서 메모리 저장소로 바꾼다. -->
+  <header id="topbar"><h1 class="app-name">성능 점검</h1><span id="nickname"></span></header>
+  <pre id="perf-out" style="white-space:pre-wrap">측정 중…</pre>
+  <main id="view" tabindex="-1"></main>
+  <nav id="tabbar"></nav>
+
+  <script>window.SM_NO_AUTOSTART = true;</script>
+  <script src="../js/config.js"></script>
+  <script src="../js/ui.js"></script>
+  <script src="../js/dateutil.js"></script>
+  <script src="../js/store.js"></script>
+  <script>
+    // 메모리 저장소(실제 localStorage에 쓰지 않음). 이후 모듈은 이 저장소를 쓴다.
+    (function () {
+      var warn = console.warn; console.warn = function () {};
+      SM.store = SM.createStore(function () { throw new Error('perf: memory'); });
+      console.warn = warn;
+    })();
+  </script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/data/questions.js"></script>
+  <script src="../js/data/strategies.js"></script>
+  <script src="../js/data/intents.js"></script>
+  <script src="../js/recommend.js"></script>
+  <script src="../js/test.js"></script>
+  <script src="../js/strategy-view.js"></script>
+  <script src="../js/planner.js"></script>
+  <script src="../js/checkin.js"></script>
+  <script src="../js/feed.js"></script>
+  <script src="../js/chat.js"></script>
+  <script src="../js/settings.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="seed.js"></script>
+  <script>
+    (async function () {
+      var out = document.getElementById('perf-out');
+      var lines = [];
+      var today = SM.date.today();
+      var t0 = performance.now();
+      var info = SM.seed.year(SM.store, { today: today });
+      lines.push('가짜 데이터 생성 ' + Math.round(performance.now() - t0) + 'ms · 블록 ' + info.blocks + ' · 점검표 ' + info.checkins + ' · 스냅샷 ' + info.snapshots + ' · 댓글 ' + info.comments);
+      var bytes = SM.store.usageBytes();
+      lines.push('usageBytes ' + Math.round(bytes / 1024) + ' KB (' + (bytes / 1024 / 1024).toFixed(2) + ' MB, 한도 약 5MB의 ' + Math.round(bytes / (5 * 1024 * 1024) * 100) + '%)');
+      var by = {};
+      SM.store.keys('').forEach(function (k) { var p = k.split(':')[0]; by[p] = (by[p] || 0) + (k.length + JSON.stringify(SM.store.get(k)).length) * 2; });
+      lines.push('키 종류별: ' + Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (p) { return p + ' ' + Math.round(by[p] / 1024) + 'KB'; }).join(', '));
+      SM.store.set(SM.keys.session(), { sid: info.sid, lastActive: Date.now() });
+      SM.store.set(SM.keys.chatMeta(info.sid), { greetedOn: today }); // 첫 인사 지연 제외
+
+      var routes = ['#/chat', '#/strategy', '#/result', '#/planner/month', '#/planner/week', '#/planner/day',
+        '#/check', '#/check/week', '#/check/month', '#/class', '#/settings'];
+      var results = [];
+      for (var i = 0; i < routes.length; i++) {
+        var times = [];
+        for (var k = 0; k < 3; k++) {
+          location.hash = routes[i];
+          var s = performance.now();
+          await SM.router.render();
+          void document.getElementById('view').offsetHeight; // 레이아웃까지
+          times.push(performance.now() - s);
+        }
+        times.sort(function (a, b) { return a - b; });
+        results.push({ route: routes[i], ms: times[1], nodes: document.getElementById('view').getElementsByTagName('*').length, head: ((document.querySelector('#view h2') || {}).textContent || '') + (document.querySelector('#view h2') && /불러오지/.test(document.querySelector('#view h2').textContent) ? ' — ' + Array.prototype.map.call(document.querySelectorAll('#view p'), function (p) { return p.textContent; }).join(' ') : '') });
+      }
+      results.forEach(function (r) {
+        lines.push((r.ms > 1000 ? '⚠ ' : '') + r.route + ' ' + r.ms.toFixed(1) + 'ms · 요소 ' + r.nodes + '개 · ' + r.head);
+      });
+      window.PERF = { info: info, bytes: bytes, results: results };
+      out.textContent = 'PERF-START\n' + lines.join('\n') + '\nPERF-END';
+    })().catch(function (e) {
+      document.getElementById('perf-out').textContent = 'PERF-START\n오류: ' + (e.stack || e) + '\nPERF-END';
+    });
+  </script>
+</body>
+</html>

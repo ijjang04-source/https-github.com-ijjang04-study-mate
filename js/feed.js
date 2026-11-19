@@ -446,6 +446,10 @@
     const drafts = draftsBySid[p.sid] = draftsBySid[p.sid] || {};
     const openComments = openBySid[p.sid] = openBySid[p.sid] || {};
     const filter = { subject: null, strategy: null };
+    // 카드가 많으면(1년치 30명 × 20주 = 600장) 한 번에 다 그리지 않고 최신 PAGE장씩
+    const PAGE = 20;
+    let shown = PAGE;
+    let filterSig = '';
     const root = el('section', { class: 'stack feed' }, el('h2', { text: '우리 반' }));
     const filterBox = el('div', { class: 'stack' });
     const listBox = el('div', { class: 'stack', 'aria-live': 'polite' });
@@ -621,7 +625,23 @@
         return;
       }
       if (!items.length) { listBox.appendChild(el('p', { class: 'muted', text: '조건에 맞는 계획이 없어.' })); return; }
-      items.forEach((x) => listBox.appendChild(card(x)));
+      const sig = JSON.stringify(filter);
+      if (sig !== filterSig) { filterSig = sig; shown = PAGE; }
+      items.slice(0, shown).forEach((x) => listBox.appendChild(card(x)));
+      if (items.length > shown) {
+        const rest = items.length - shown;
+        listBox.appendChild(el('button', {
+          type: 'button', class: 'btn', text: `더 보기 (${Math.min(PAGE, rest)}개 더 · 남은 ${rest}개)`,
+          onClick() {
+            const first = shown;
+            shown += PAGE;
+            render();
+            // 새로 나온 첫 카드로 포커스(키보드 사용자)
+            const next = listBox.children[first];
+            if (next) { next.setAttribute('tabindex', '-1'); next.focus(); }
+          }
+        }));
+      }
     }
 
     // 내 공개 계획의 실천률 등 최신 값으로(내용이 같으면 순서는 그대로)

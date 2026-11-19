@@ -372,7 +372,23 @@
     return today > last;
   }
 
-  SM.checkin = { upsert, find, nextWeek, applyNextChange, isDue };
+  /**
+   * 점검표 제출 때: '다음 주에 바꿀 한 가지'를 이번 주 review에 적고, 다음 주 실행 의도 맨 위에 넣는다.
+   * planner: SM.planner 또는 SM.createPlanner 인스턴스(getWeek/saveWeek)
+   */
+  function carryNextChange(planner, isoWeek, text) {
+    const next = String(text || '').trim();
+    const thisWeek = planner.getWeek(isoWeek) || {};
+    planner.saveWeek(isoWeek, Object.assign({}, thisWeek, { review: Object.assign({}, thisWeek.review || {}, { nextChange: next }) }));
+    if (!next) return null;
+    const nw = nextWeek(isoWeek);
+    const nextData = SM.planner.normalizeWeek(planner.getWeek(nw));
+    nextData.intentions = applyNextChange(nextData.intentions, next, nextData.carryDismissed);
+    planner.saveWeek(nw, nextData);
+    return nw;
+  }
+
+  SM.checkin = { upsert, find, nextWeek, applyNextChange, carryNextChange, isDue };
 })(window.SM = window.SM || {});
 
 // ---------- #/check 자기 점검 ----------
@@ -663,14 +679,7 @@
 
       // 다음 주에 바꿀 한 가지 → 이번 주 review + 다음 주 실행 의도 맨 위
       const next = String(entry.reflect.nextChange || '').trim();
-      const thisWeek = SM.planner.getWeek(wk) || {};
-      SM.planner.saveWeek(wk, Object.assign({}, thisWeek, { review: Object.assign({}, thisWeek.review || {}, { nextChange: next }) }));
-      if (next) {
-        const nw = SM.checkin.nextWeek(wk);
-        const nextData = SM.planner.normalizeWeek(SM.planner.getWeek(nw));
-        nextData.intentions = SM.checkin.applyNextChange(nextData.intentions, next, nextData.carryDismissed);
-        SM.planner.saveWeek(nw, nextData);
-      }
+      SM.checkin.carryNextChange(SM.planner, wk, next);
 
       paintStatus();
       paintFeedback();
@@ -881,7 +890,9 @@
     const w = cssW - pad.l - pad.r;
     const h = cssH - pad.t - pad.b;
     const n = labels.length;
-    const x = (i) => pad.l + (n <= 1 ? w / 2 : (w * i) / (n - 1));
+    // 첫·마지막 점의 값 라벨이 세로축 글자(50% 등)와 겹치지 않게 양옆을 조금 비운다
+    const inset = 20;
+    const x = (i) => pad.l + inset + (n <= 1 ? (w - 2 * inset) / 2 : ((w - 2 * inset) * i) / (n - 1));
     const y = (v) => pad.t + h - Math.max(0, Math.min(1, v)) * h;
 
     ctx.font = '12px system-ui, sans-serif';

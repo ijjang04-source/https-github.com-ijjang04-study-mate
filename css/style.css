@@ -6,7 +6,7 @@
   --text: #1f2328;
   --muted: #5c636d;
   --line: #dde0e5;
-  --accent: #2f6fde;
+  --accent: #2563cc; /* 배경·선택 칩 위 4.5:1 이상(21단계) */
   --on-accent: #ffffff;
   --accent-weak: #e7eefc;
   --good: #1d7a3c;
@@ -247,7 +247,7 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 .field textarea { min-height: 96px; resize: vertical; }
 
 .field > .label { font-weight: 600; }
-.field .hint { font-size: 15px; }
+.field .hint { font-size: 16px; }
 .field .row { gap: var(--gap); }
 .grow { flex: 1 1 120px; min-width: 0; }
 
@@ -489,6 +489,7 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 .spectrum:first-of-type { border-top: 0; padding-top: 0; }
 
 .spectrum > summary {
+  display: block; /* 11단계의 details > summary { display: flex }에 덮이지 않게(21단계) */
   list-style: none;
   cursor: pointer;
   min-height: 44px;
@@ -545,7 +546,7 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 .spec-reading { margin: 0; }
 .spec-more { color: var(--accent); }
 .spectrum[open] .spec-more { display: none; }
-.spec-note { margin: 0; font-size: 15px; }
+.spec-note { margin: 0; font-size: 16px; }
 
 .spec-detail {
   display: grid;
@@ -604,7 +605,7 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
   border-radius: 50%;
 }
 
-.kolb-axis, .kolb-x { font-size: 15px; color: var(--muted); }
+.kolb-axis, .kolb-x { font-size: 16px; color: var(--muted); }
 .kolb-x { display: flex; justify-content: space-between; width: 100%; max-width: 260px; }
 
 .weak-list { margin: 0; padding-left: 1.2em; }
@@ -682,7 +683,7 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
   border-radius: 999px;
 }
 
-.evidence { font-size: 15px; color: var(--muted); }
+.evidence { font-size: 16px; color: var(--muted); }
 
 .source summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--muted); }
 
@@ -1043,3 +1044,9 @@ a.chip { text-decoration: none; }
 #topbar .btn { flex: none; padding-left: 12px; padding-right: 12px; }
 .settings input[type="file"] { min-height: 44px; }
 .settings input[type="file"]::file-selector-button { min-height: 44px; padding: 0 16px; font: inherit; margin-right: 8px; }
+
+/* ---------- 21단계 통합 점검 ---------- */
+/* 360px에서 월 이동 줄의 ▶가 다음 줄로 밀리지 않게 가운데 제목이 줄어든다 */
+.planner-nav .grow.center { flex: 1 1 0; min-width: 0; }
+/* 따로 꾸미지 않은 select도 터치 44px·글자 16px */
+select { min-height: 44px; font: inherit; max-width: 100%; }

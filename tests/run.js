@@ -51,6 +51,7 @@
   }
 
   load('tests/assert.js');
+  load('tests/seed.js'); // 성능 점검용 가짜 데이터 생성기(SM.seed)
 
   const testFiles = fs.readdirSync(__dirname).filter((f) => f.endsWith('.test.js')).sort();
   let loadFailures = 0;
