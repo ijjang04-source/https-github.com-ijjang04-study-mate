@@ -351,4 +351,28 @@
     SOC_CAUSAL: '사건·제도의 원인과 결과를 비교하는 것이 어려움',
     ANY_ANXIETY: '시험 때 긴장해서 아는 것도 틀리기 쉬움'
   };
+
+  // 추천 이유 문장용: "<표현> 너에게 딱 맞는 연습이야."
+  SM.data.weaknessYou = {
+    MATH_SELECT: '풀이법을 고르는 게 어려운',
+    MATH_PROCESS: '풀이 과정을 따라가기 어려운',
+    MATH_BASIC: '기초 연산과 공식에서 자주 막히는',
+    MATH_CARELESS: '아는 문제를 실수로 자주 틀리는',
+    ENG_VOCAB: '외운 단어를 금방 잊는',
+    ENG_CONFUSE: '비슷한 단어가 자주 헷갈리는',
+    ENG_GRAMMAR: '문법을 문장에 적용하기 어려운',
+    ENG_READING: '지문의 요지를 잡기 어려운',
+    KOR_STRUCTURE: '비문학 구조를 잡기 어려운',
+    KOR_APPLY: '개념어를 작품에 적용하기 어려운',
+    KOR_MEMORIZE: '문법·어법 암기가 벅찬',
+    KOR_ILLUSION: '이해했다고 착각하기 쉬운',
+    SCI_RELATION: '개념 사이 관계가 헷갈리는',
+    SCI_MISCONCEPT: '평소 생각과 다른 과학 개념이 어려운',
+    SCI_TERMS: '용어와 기호를 외우기 어려운',
+    SCI_APPLY: '개념을 문제에 적용하기 어려운',
+    SOC_RECALL: '시험 때 외운 게 잘 안 떠오르는',
+    SOC_ORDER: '사건 순서가 자주 뒤섞이는',
+    SOC_CAUSAL: '원인과 결과를 비교하기 어려운',
+    ANY_ANXIETY: '시험 때 긴장하기 쉬운'
+  };
 })(window.SM = window.SM || {});

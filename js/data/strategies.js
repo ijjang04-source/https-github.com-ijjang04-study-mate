@@ -17,6 +17,15 @@
     'approach:surface', 'goal:avoid', 'chrono:morning', 'chrono:evening'
   ];
 
+  // 양극 차원·vark·approach·chrono는 styleDims의 lean을 쓰고, 나머지 극의 '~하는 편' 표현은 여기서.
+  SM.data.poleLeans = {
+    'kolb:diverging': '직접 겪고 곰곰이 생각하며 배우는 편',
+    'kolb:assimilating': '개념을 정리하고 따져 보며 배우는 편',
+    'kolb:converging': '개념을 바로 적용해 보며 배우는 편',
+    'kolb:accommodating': '직접 부딪혀 해 보며 배우는 편',
+    'goal:avoid': '틀리는 게 걱정되는 편'
+  };
+
   SM.data.strategyCategories = {
     A: '암기·입력',
     B: '이해·정교화',

@@ -623,6 +623,71 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 
 .retest-due { border: 2px solid var(--accent); }
 
+/* ---------- 전략 ---------- */
+
+.tabs {
+  display: flex;
+  gap: var(--gap);
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  min-height: 44px;
+  padding: 0 calc(var(--gap) * 2);
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+}
+
+/* 선택된 탭: 색 + 굵기 + 밑줄 */
+.tab[aria-selected="true"] {
+  color: var(--accent);
+  font-weight: 700;
+  border-bottom-color: var(--accent);
+}
+
+.strategy-card h4 { margin: 0 0 4px; font-size: 16px; }
+.strategy-card ul, .strategy-card ol { margin: 0; padding-left: 1.3em; }
+.strategy-card section p { margin: 0; }
+
+.strategy-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.strategy-head h3 { margin: 0; }
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-weight: 700;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.tag {
+  padding: 2px 10px;
+  font-size: 15px;
+  background: var(--accent-weak);
+  border-radius: 999px;
+}
+
+.evidence { font-size: 15px; color: var(--muted); }
+
+.source summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--muted); }
+
+.habit { display: grid; gap: 4px; }
+.habit p { margin: 0; }
+
 /* ---------- 토스트 ---------- */
 
 .toast-host {
