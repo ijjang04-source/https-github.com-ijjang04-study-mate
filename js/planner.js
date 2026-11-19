@@ -1,3 +1,50 @@
+// ---------- SM.metrics: 플래너 지표(계산만, DOM 없음). 15단계에서 보강 ----------
+(function (SM) {
+  'use strict';
+
+  const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+  const APPLIED_SCORE = { yes: 1, partial: 0.5, no: 0 };
+
+  /** 'HH:MM'~'HH:MM' 분(자정을 넘기면 다음 날로). 비어 있거나 잘못되면 0 */
+  function minutes(start, end) {
+    if (!TIME.test(String(start || '')) || !TIME.test(String(end || ''))) return 0;
+    return SM.date.minutesBetween(start, end);
+  }
+
+  /** 블록 달성률(%) = 달성 분량 / 목표 분량, 반올림. 100을 넘을 수 있다. 없으면 null */
+  function achievement(block) {
+    const t = block && block.target ? Number(block.target.n) : NaN;
+    const n = block && block.done ? block.done.n : null;
+    if (!(t > 0) || n === null || n === undefined || n === '' || isNaN(Number(n))) return null;
+    return Math.round(Number(n) / t * 100);
+  }
+
+  const pct = (x) => Math.round(x * 100);
+
+  /**
+   * 하루 지표
+   * → { count, doneCount, plannedMinutes, actualMinutes,
+   *     completion: 완료 블록 비율 %, achievement: 기록한 블록 달성률 평균 %, strategyRate: 전략 적용률 % } (없으면 null)
+   */
+  function day(blocks) {
+    const list = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
+    const done = list.filter((b) => b.done);
+    const rates = done.map(achievement).filter((r) => r !== null);
+    const applied = done.filter((b) => b.strategy && APPLIED_SCORE[b.done.applied] !== undefined);
+    return {
+      count: list.length,
+      doneCount: done.length,
+      plannedMinutes: list.reduce((s, b) => s + minutes(b.start, b.end), 0),
+      actualMinutes: done.reduce((s, b) => s + minutes(b.done.start, b.done.end), 0),
+      completion: list.length ? pct(done.length / list.length) : null,
+      achievement: rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null,
+      strategyRate: applied.length ? pct(applied.reduce((s, b) => s + APPLIED_SCORE[b.done.applied], 0) / applied.length) : null
+    };
+  }
+
+  SM.metrics = Object.assign(SM.metrics || {}, { minutes, achievement, day, APPLIED_SCORE });
+})(window.SM = window.SM || {});
+
 (function (SM) {
   'use strict';
 
@@ -113,6 +160,16 @@
       const d = load(SM.date.monthKey(iso)).days[iso];
       return d && Array.isArray(d.blocks) ? d.blocks : [];
     }
+    function getDayData(iso) {
+      const d = load(SM.date.monthKey(iso)).days[iso];
+      return Object.assign({ blocks: [] }, d || {});
+    }
+    function saveDayData(iso, obj) {
+      const mk = SM.date.monthKey(iso);
+      const data = load(mk);
+      data.days[iso] = Object.assign({}, obj || {}, { blocks: (obj && obj.blocks) || [] });
+      return save(mk, data);
+    }
     function saveDay(iso, blocks) {
       const mk = SM.date.monthKey(iso);
       const data = load(mk);
@@ -156,7 +213,7 @@
       return n;
     }
 
-    return { load, save, getWeek, saveWeek, getDay, saveDay, nextDday, addWeeklyStrategy, drainQueue };
+    return { load, save, getWeek, saveWeek, getDay, saveDay, getDayData, saveDayData, nextDday, addWeeklyStrategy, drainQueue };
   }
 
   const instance = createPlanner({
@@ -310,11 +367,8 @@
       const r = weekView(ctx);
       body = r.node; viewCleanup = r.cleanup;
     } else {
-      body = el('div', { class: 'card stack' },
-        el('h3', { text: `일간 플래너 · ${SM.date.formatKorean(cur)}` }),
-        el('p', { class: 'muted', text: '준비 중이에요. 월간 플래너는 지금 쓸 수 있어.' }),
-        el('a', { href: '#/planner/month', class: 'btn', text: '월간 플래너 보기' })
-      );
+      const r = dayView(ctx);
+      body = r.node; viewCleanup = r.cleanup;
     }
 
     const node = el('section', { class: 'planner stack' },
@@ -697,7 +751,7 @@
   function blockSummary(isoWeek, getDay) {
     return SM.date.weekDays(isoWeek).map((iso, i) => {
       const blocks = getDay(iso) || [];
-      return { day: DAY_KEYS[i], date: iso, planned: blocks.length, done: blocks.filter((b) => b && (b.done === true || b.status === 'done')).length };
+      return { day: DAY_KEYS[i], date: iso, planned: blocks.length, done: blocks.filter((b) => b && (!!b.done || b.status === 'done')).length };
     });
   }
 
@@ -738,7 +792,7 @@
   };
   function abbr(id) {
     if (ABBR[id]) return ABBR[id];
-    const name = strategyName(id).replace(/s/g, '');
+    const name = strategyName(id).replace(/[ ]+/g, '');
     return name.slice(0, 4);
   }
 
@@ -1130,12 +1184,491 @@
     };
   }
 
+  // =====================================================================
+  // 일간 플래너
+  // days[iso] = { blocks: [블록], prefilled: true|undefined }
+  // 블록 = { id, start, end, subject, topic, target: { n, unit }, strategy, method,
+  //          place, placeText, with, modes: [],
+  //          done: { start, end, n, applied: 'yes'|'partial'|'no', checks: [bool|null, bool|null],
+  //                  focus, blockers: [], note, place, placeText, with } | undefined }
+  // done이 있으면 기록한 블록이다.
+  // =====================================================================
+
+  const MAX_BLOCKS = 12;
+  const NOTE_MAX = 100;
+  const UNITS = ['문제', '쪽', '개', '분'];
+  const PLACES = [['home', '집 책상'], ['class', '교실'], ['library', '도서관·자습실'], ['academy', '학원'], ['cafe', '카페'], ['other', '기타']];
+  const WITH = [['alone', '혼자'], ['friend', '친구와'], ['study', '스터디']];
+  const MODES = [['solve', '문제 풀기'], ['read', '읽기'], ['lecture', '강의 듣기'], ['organize', '정리·도식화'], ['explain', '소리 내어 설명'], ['quiz', '퀴즈·카드']];
+  const BLOCKERS = [['phone', '휴대폰'], ['sleepy', '졸림'], ['noise', '소음'], ['hard', '내용이 어려움'], ['other', '기타']];
+  const APPLIED = [['yes', '예'], ['partial', '부분'], ['no', '아니오']];
+  const APPLIED_TEXT = { yes: '전략 적용', partial: '전략 부분 적용', no: '전략 미적용' };
+
+  const QUIET_PLACES = ['home', 'library'];
+  const SOCIAL_PLACES = ['class', 'library', 'academy', 'cafe'];
+
+  function newId() { return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  function newBlock(over) {
+    return Object.assign({
+      id: newId(), start: '', end: '', subject: '', topic: '', target: { n: null, unit: '문제' },
+      strategy: null, method: '', place: null, placeText: '', with: null, modes: []
+    }, over || {});
+  }
+
+  /** 블록 추가(12개 제한) → { blocks, added } */
+  function addBlock(blocks, block) {
+    const list = (blocks || []).slice();
+    if (list.length >= MAX_BLOCKS) return { blocks: list, added: false };
+    list.push(block || newBlock());
+    return { blocks: list, added: true };
+  }
+
+  /** i번 블록을 dir(-1 위, +1 아래)로 → 새 배열(범위를 벗어나면 그대로) */
+  function moveBlock(blocks, i, dir) {
+    const list = (blocks || []).slice();
+    const j = i + dir;
+    if (i < 0 || i >= list.length || j < 0 || j >= list.length) return list;
+    const t = list[i]; list[i] = list[j]; list[j] = t;
+    return list;
+  }
+
+  /**
+   * 주간 배치표로 블록 미리 만들기. 한 번 만들었으면(prefilled) 다시 만들지 않는다.
+   * 칸이 비어 있으면 아무것도 안 하고 플래그도 세우지 않는다(나중에 배치하면 그때 만든다).
+   * entries: ['수학:interleave', ...], methodFor(subject, id) → 기본 실행 방식
+   * → { day, created }
+   */
+  function prefillDay(day, entries, methodFor) {
+    const d = Object.assign({ blocks: [] }, day || {});
+    d.blocks = Array.isArray(d.blocks) ? d.blocks.slice() : [];
+    if (d.prefilled || !entries || !entries.length) return { day: d, created: 0 };
+    let created = 0;
+    entries.forEach((e) => {
+      const at = e.indexOf(':');
+      const subject = at === -1 ? e : e.slice(0, at);
+      const strategy = at === -1 ? null : e.slice(at + 1) || null;
+      const r = addBlock(d.blocks, newBlock({ subject, strategy, method: methodFor ? methodFor(subject, strategy) || '' : '' }));
+      if (r.added) { d.blocks = r.blocks; created++; }
+    });
+    d.prefilled = true;
+    return { day: d, created };
+  }
+
+  /** 점검 질문 답으로 적용 여부 제안: 둘 다 예 → yes, 하나 → partial, 없음 → no */
+  function suggestApplied(checks) {
+    const yes = (checks || []).filter((c) => c === true).length;
+    return yes >= 2 ? 'yes' : yes === 1 ? 'partial' : 'no';
+  }
+
+  /** 달성률(%) — 계산은 SM.metrics */
+  function achievement(block) { return SM.metrics.achievement(block); }
+
+  /** 어제 블록 복사: 계획 부분만, 새 id */
+  function copyPlan(blocks) {
+    return (blocks || []).map((b) => newBlock({
+      start: b.start || '', end: b.end || '', subject: b.subject || '', topic: b.topic || '',
+      target: { n: b.target ? b.target.n : null, unit: (b.target && b.target.unit) || '문제' },
+      strategy: b.strategy || null, method: b.method || '', place: b.place || null, placeText: b.placeText || '',
+      with: b.with || null, modes: (b.modes || []).slice()
+    }));
+  }
+
+  /** 기록 시작 시 기본값(계획 값을 가져온다) */
+  function newDone(block) {
+    return {
+      start: block.start || '', end: block.end || '', n: null, applied: null, checks: [null, null],
+      focus: null, blockers: [], note: '', place: block.place || null, placeText: block.placeText || '', with: block.with || null
+    };
+  }
+
+  /** 계획 장소·함께하기가 추천과 다르면 안내 문장 목록(막지 않음) */
+  function envHints(env, block) {
+    if (!env || !block) return [];
+    const out = [];
+    if (env.with === '혼자' && (block.with === 'friend' || block.with === 'study')) out.push('너는 혼자 조용한 곳에서 집중이 잘 되는 편이야.');
+    else if (env.with === '함께' && block.with === 'alone') out.push('너는 친구와 함께할 때 공부가 잘 되는 편이야.');
+    if (env.place && block.place && block.place !== 'other') {
+      const quiet = env.place.indexOf('조용') !== -1;
+      const ok = (quiet ? QUIET_PLACES : SOCIAL_PLACES).indexOf(block.place) !== -1;
+      if (!ok) out.push(`너는 ${env.place}에서 집중이 잘 되는 편이야.`);
+    }
+    return out;
+  }
+
+  function labelOf(table, id) {
+    const hit = table.find((x) => x[0] === id);
+    return hit ? hit[1] : '';
+  }
+
+  function minutesText(m) {
+    if (!m) return '0분';
+    const h = Math.floor(m / 60), r = m % 60;
+    return h ? `${h}시간${r ? ' ' + r + '분' : ''}` : `${r}분`;
+  }
+
+  /** 접힌 블록 요약: '완료 · 80% · 전략 부분 적용' */
+  function doneSummary(block) {
+    if (!block || !block.done) return '';
+    const parts = ['완료'];
+    const rate = achievement(block);
+    if (rate !== null) parts.push(rate + '%');
+    else if (SM.metrics.minutes(block.done.start, block.done.end)) parts.push(minutesText(SM.metrics.minutes(block.done.start, block.done.end)));
+    if (block.strategy && block.done.applied) parts.push(APPLIED_TEXT[block.done.applied]);
+    return parts.join(' · ');
+  }
+
+  // ---------- 화면: 일간 ----------
+
+  function dayView(ctx) {
+    const { cur: iso, today, plan, saved, el } = ctx;
+    const result = latestResult();
+    const env = result ? SM.recommend.environment(result) : null;
+    const wk = SM.date.isoWeek(iso);
+    const dayKey = DAY_KEYS[SM.date.weekday(iso)];
+    const week = normalizeWeek(instance.getWeek(wk));
+    const monthFocus = instance.load(monthKeyForWeek(wk)).month.focusStrategies;
+
+    function styleWayFor(subject, id) {
+      const s = SM.data.strategies.find((x) => x.id === id);
+      if (!s) return '';
+      if (!result) return s.howTo[0] || '';
+      const info = SM.recommend.explain(result, subject || (result.subjects || [])[0], id) || {};
+      const pole = SM.recommend.cardPole(result, info.pole);
+      const way = pole ? SM.data.styleWays[pole] : null;
+      if (!way) return s.howTo[0] || '';
+      return s.category === 'D' ? way.retrieval : way.understand;
+    }
+
+    // 미리 만들기(한 번만)
+    const pre = prefillDay(instance.getDayData(iso), week.grid[dayKey], styleWayFor);
+    if (pre.created) {
+      instance.saveDayData(iso, pre.day);
+      setTimeout(() => SM.ui.toast(`주간 배치표에서 블록 ${pre.created}개를 만들어 뒀어.`), 0);
+    }
+    let blocks = pre.day.blocks;
+    const openState = {};          // id → true(펼침)
+    const recordOpen = {};         // id → true(기록 영역 펼침)
+
+    let dirty = false;
+    const persist = SM.ui.debounce(() => { save(); }, 500);
+    function save() { persist.cancel(); instance.saveDay(iso, blocks); dirty = false; saved.set('saved'); }
+    function changed() { dirty = true; saved.set('saving'); persist(); updateSummary(); }
+
+    // --- 하루 요약 줄 ---
+    const summaryLine = el('p', { class: 'day-summary', role: 'status' });
+    function updateSummary() {
+      const m = SM.metrics.day(blocks);
+      const parts = [
+        `계획 ${minutesText(m.plannedMinutes)}`,
+        `실제 ${minutesText(m.actualMinutes)}`,
+        `완료 ${m.doneCount}/${m.count}블록`,
+        m.achievement === null ? '달성률 —' : `달성률 ${m.achievement}%`,
+        m.strategyRate === null ? '전략 적용 —' : `전략 적용 ${m.strategyRate}%`
+      ];
+      summaryLine.textContent = parts.join(' · ');
+    }
+
+    const list = el('ol', { class: 'block-list' });
+    const addBtn = el('button', { type: 'button', class: 'btn btn-primary', text: '+ 공부 블록 추가', onClick: onAdd });
+    const countText = el('span', { class: 'muted', 'aria-live': 'polite' });
+
+    function subjectsForChips() {
+      const out = [];
+      ((result && result.subjects) || []).concat(Object.keys(week.strategies), SM.config.subjects).forEach((s) => { if (out.indexOf(s) === -1) out.push(s); });
+      return out;
+    }
+
+    function strategyOptions(subject) {
+      const w = (week.strategies[subject] || []).slice();
+      if (w.length) return w;
+      return strategyChoices(monthFocus, plan, subject).slice(0, 4);
+    }
+
+    // 칩 묶음: single이면 하나만, toggle하면 다시 누를 때 해제
+    function chipGroup(label, table, isOn, onPick, fk) {
+      return el('div', { class: 'chip-row', role: 'group', 'aria-label': label },
+        table.map(([id, text]) => el('button', {
+          type: 'button', class: 'chip' + (isOn(id) ? ' chip-on' : ''), 'aria-pressed': String(isOn(id)), text,
+          'data-fk': `${fk}-${id}`,
+          onClick: () => onPick(id)
+        })));
+    }
+
+    function field(label, control, id) {
+      return el('div', { class: 'field' }, el(id ? 'label' : 'span', id ? { for: id, class: 'label', text: label } : { class: 'label', text: label }), control);
+    }
+
+    function renderBlock(i) {
+      const b = blocks[i];
+      const open = openState[b.id] !== undefined ? openState[b.id] : !b.done;
+      const pid = 'blk-' + b.id;
+      const rerender = () => {
+        const fk = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-fk');
+        const idx = blocks.indexOf(b);
+        if (idx === -1) return;
+        const fresh = renderBlock(idx);
+        const old = list.querySelector(`[data-block="${b.id}"]`);
+        if (old) old.replaceWith(fresh);
+        if (fk) { const t = fresh.querySelector(`[data-fk="${fk}"]`); if (t) t.focus(); }
+        updateSummary();
+      };
+
+      const title = `${i + 1}. ${b.subject || '과목 미정'}${b.topic ? ' · ' + b.topic : ''}`;
+      const timeText = b.start && b.end ? `${b.start}~${b.end}` : '';
+      const head = el('div', { class: 'block-head' },
+        el('button', {
+          type: 'button', class: 'block-toggle', 'aria-expanded': String(open), 'aria-controls': pid + '-body', 'data-fk': 'toggle',
+          onClick() { openState[b.id] = !open; rerender(); }
+        },
+          el('strong', { text: title }),
+          el('span', { class: 'muted', text: [timeText, b.strategy ? strategyName(b.strategy) : ''].filter(Boolean).join(' · ') }),
+          b.done ? el('span', { class: 'done-badge', text: '✓ ' + doneSummary(b) }) : null
+        ),
+        el('div', { class: 'block-tools' },
+          el('button', { type: 'button', class: 'btn btn-ghost icon', 'aria-label': `${i + 1}번 블록 위로`, text: '↑', disabled: i === 0, 'data-fk': 'up', onClick: () => move(i, -1, 'up') }),
+          el('button', { type: 'button', class: 'btn btn-ghost icon', 'aria-label': `${i + 1}번 블록 아래로`, text: '↓', disabled: i === blocks.length - 1, 'data-fk': 'down', onClick: () => move(i, 1, 'down') }),
+          el('button', { type: 'button', class: 'btn btn-ghost icon', 'aria-label': `${i + 1}번 블록 삭제`, text: '✕', onClick: () => remove(i) })
+        )
+      );
+
+      const card = el('li', { class: 'card block' + (b.done ? ' block-done' : ''), dataset: { block: b.id } }, head);
+      if (!open) return card;
+
+      // ----- 계획 -----
+      const timeInput = (key, label) => {
+        const inp = el('input', { type: 'time', id: `${pid}-${key}`, 'aria-label': label, onInput(e) { b[key] = e.target.value; changed(); } });
+        inp.value = b[key] || '';
+        return inp;
+      };
+      const topic = el('input', { type: 'text', id: pid + '-topic', maxlength: 40, placeholder: '예) 이차함수 3절', onInput(e) { b.topic = e.target.value; changed(); } });
+      topic.value = b.topic || '';
+      const targetN = el('input', {
+        type: 'number', id: pid + '-tn', inputmode: 'numeric', min: 0, max: 9999, class: 'num',
+        onInput(e) { const v = e.target.value; b.target.n = v === '' ? null : Math.max(0, Number(v)); changed(); refreshRate(); }
+      });
+      targetN.value = b.target && b.target.n !== null && b.target.n !== undefined ? String(b.target.n) : '';
+
+      const opts = strategyOptions(b.subject);
+      if (b.strategy && opts.indexOf(b.strategy) === -1) opts.push(b.strategy);
+      const other = el('select', {
+        id: pid + '-other', 'aria-label': '기타 전략',
+        onChange(e) { if (e.target.value) setStrategy(e.target.value); }
+      }, el('option', { value: '', text: '기타: 전체에서 고르기' }),
+      SM.data.strategies.filter((s) => opts.indexOf(s.id) === -1).map((s) => el('option', { value: s.id, text: s.name })));
+
+      function setStrategy(id) {
+        const oldDefault = b.strategy ? styleWayFor(b.subject, b.strategy) : '';
+        b.strategy = b.strategy === id ? null : id;
+        if (!b.method || b.method === oldDefault) b.method = b.strategy ? styleWayFor(b.subject, b.strategy) : '';
+        if (b.done) b.done.checks = [null, null];
+        changed(); rerender();
+      }
+
+      const method = el('textarea', { id: pid + '-method', rows: 2, maxlength: 200, placeholder: '전략을 고르면 내 스타일로 하는 법이 들어와.', onInput(e) { b.method = e.target.value; changed(); } });
+      method.value = b.method || '';
+      const placeText = el('input', { type: 'text', maxlength: 20, 'aria-label': '기타 장소', placeholder: '장소 적기', onInput(e) { b.placeText = e.target.value; changed(); } });
+      placeText.value = b.placeText || '';
+      const hints = envHints(env, b);
+
+      const planBox = el('div', { class: 'stack block-plan', id: pid + '-body' },
+        el('div', { class: 'row time-row' }, field('시작', timeInput('start', '시작 시간'), `${pid}-start`), el('span', { 'aria-hidden': 'true', text: '~' }), field('끝', timeInput('end', '끝 시간'), `${pid}-end`)),
+        field('과목', chipGroup('과목', subjectsForChips().map((s) => [s, s]), (id) => b.subject === id, (id) => { b.subject = b.subject === id ? '' : id; changed(); rerender(); }, 'subj')),
+        field('범위', topic, pid + '-topic'),
+        field('목표 분량', el('div', { class: 'row wrap' }, targetN,
+          chipGroup('단위', UNITS.map((u) => [u, u]), (u) => b.target.unit === u, (u) => { b.target.unit = u; changed(); rerender(); }, 'unit')), pid + '-tn'),
+        field('적용 전략', el('div', { class: 'stack' },
+          opts.length ? chipGroup('적용 전략', opts.map((id) => [id, strategyName(id)]), (id) => b.strategy === id, setStrategy, 'str')
+            : el('p', { class: 'muted', text: '주간 플래너에서 이 과목 전략을 고르면 여기 나와.' }),
+          other)),
+        field('실행 방식', method, pid + '-method'),
+        field('장소', el('div', { class: 'stack' },
+          chipGroup('장소', PLACES, (id) => b.place === id, (id) => { b.place = b.place === id ? null : id; changed(); rerender(); }, 'place'),
+          b.place === 'other' ? placeText : null)),
+        field('함께하기', chipGroup('함께하기', WITH, (id) => b.with === id, (id) => { b.with = b.with === id ? null : id; changed(); rerender(); }, 'with')),
+        field('학습 형태 (여러 개)', chipGroup('학습 형태', MODES, (id) => b.modes.indexOf(id) !== -1, (id) => {
+          const at = b.modes.indexOf(id); if (at === -1) b.modes.push(id); else b.modes.splice(at, 1); changed(); rerender();
+        }, 'mode')),
+        hints.length ? el('p', { class: 'env-hint muted' }, hints.join(' ')) : null
+      );
+      card.appendChild(planBox);
+
+      // ----- 실행 기록 -----
+      const rateOut = el('output', { class: 'rate', 'aria-live': 'polite' });
+      function refreshRate() {
+        const r = achievement(b);
+        rateOut.textContent = r === null ? (b.target && b.target.n ? '' : '목표 분량을 적으면 달성률이 나와.') : `달성률 ${r}%`;
+      }
+
+      const recOpen = !!recordOpen[b.id];
+      if (!recOpen) {
+        card.appendChild(el('div', { class: 'row' },
+          el('button', {
+            type: 'button', class: 'btn', 'data-fk': 'record', text: b.done ? '기록 고치기' : '기록하기',
+            onClick() { recordOpen[b.id] = true; openState[b.id] = true; rerender(); const f = list.querySelector(`[data-block="${b.id}"] .block-record input`); if (f) f.focus(); }
+          })
+        ));
+        return card;
+      }
+
+      // 기록 영역을 열면 done을 만든다(계획 값이 기본)
+      if (!b.done) { b.done = newDone(b); changed(); }
+      const d = b.done;
+      const s = b.strategy ? SM.data.strategies.find((x) => x.id === b.strategy) : null;
+      const dTime = (key, label) => {
+        const inp = el('input', { type: 'time', id: `${pid}-d${key}`, 'aria-label': label, onInput(e) { d[key] = e.target.value; changed(); } });
+        inp.value = d[key] || '';
+        return inp;
+      };
+      const doneN = el('input', {
+        type: 'number', id: pid + '-dn', inputmode: 'numeric', min: 0, max: 9999, class: 'num',
+        onInput(e) { const v = e.target.value; d.n = v === '' ? null : Math.max(0, Number(v)); changed(); refreshRate(); }
+      });
+      doneN.value = d.n !== null && d.n !== undefined ? String(d.n) : '';
+      refreshRate();
+
+      const suggestion = suggestApplied(d.checks);
+      const yn = [[true, '예'], [false, '아니오']];
+      const checksBox = s ? el('div', { class: 'stack' },
+        s.checkQuestions.map((q, qi) => el('div', { class: 'check-q' },
+          el('p', { text: q }),
+          el('div', { class: 'chip-row', role: 'group', 'aria-label': q },
+            yn.map(([v, t]) => el('button', {
+              type: 'button', class: 'chip' + (d.checks[qi] === v ? ' chip-on' : ''), 'aria-pressed': String(d.checks[qi] === v), text: t,
+              'data-fk': `chk${qi}-${t}`,
+              onClick() {
+                d.checks[qi] = d.checks[qi] === v ? null : v;
+                d.applied = suggestApplied(d.checks);   // 답할 때마다 제안값으로(학생이 아래에서 바꿀 수 있음)
+                changed(); rerender();
+              }
+            })))
+        )),
+        field('전략 적용', el('div', { class: 'stack' },
+          chipGroup('전략 적용', APPLIED, (id) => d.applied === id, (id) => { d.applied = id; changed(); rerender(); }, 'applied'),
+          el('p', { class: 'muted', text: `점검 질문으로 본 제안: ${labelOf(APPLIED, suggestion)}` })))
+      ) : el('p', { class: 'muted', text: '전략을 고르지 않은 블록이야.' });
+
+      const note = el('input', {
+        type: 'text', id: pid + '-note', maxlength: NOTE_MAX, placeholder: '예) 교차 연습은 처음엔 느렸지만 유형 구분이 쉬워졌어',
+        onInput(e) { d.note = e.target.value; counter.textContent = `${NOTE_MAX - d.note.length}자 남음`; changed(); }
+      });
+      note.value = d.note || '';
+      const counter = el('span', { class: 'muted', 'aria-live': 'polite', text: `${NOTE_MAX - (d.note || '').length}자 남음` });
+      const dPlaceText = el('input', { type: 'text', maxlength: 20, 'aria-label': '기타 장소(실제)', onInput(e) { d.placeText = e.target.value; changed(); } });
+      dPlaceText.value = d.placeText || '';
+
+      card.appendChild(el('div', { class: 'stack block-record' },
+        el('h4', { text: '실행 기록' }),
+        el('div', { class: 'row time-row' }, field('실제 시작', dTime('start', '실제 시작 시간'), `${pid}-dstart`), el('span', { 'aria-hidden': 'true', text: '~' }), field('실제 끝', dTime('end', '실제 끝 시간'), `${pid}-dend`)),
+        field(`달성 분량${b.target && b.target.n ? ` (목표 ${b.target.n}${b.target.unit})` : ''}`, el('div', { class: 'row wrap' }, doneN, el('span', { text: (b.target && b.target.unit) || '' }), rateOut), pid + '-dn'),
+        checksBox,
+        field('실제 장소', el('div', { class: 'stack' },
+          chipGroup('실제 장소', PLACES, (id) => d.place === id, (id) => { d.place = d.place === id ? null : id; changed(); rerender(); }, 'dplace'),
+          d.place === 'other' ? dPlaceText : null)),
+        field('실제 함께하기', chipGroup('실제 함께하기', WITH, (id) => d.with === id, (id) => { d.with = d.with === id ? null : id; changed(); rerender(); }, 'dwith')),
+        field('집중도', chipGroup('집중도 1~5', [1, 2, 3, 4, 5].map((n) => [n, String(n)]), (n) => d.focus === n, (n) => { d.focus = d.focus === n ? null : n; changed(); rerender(); }, 'focus')),
+        el('p', { class: 'muted small', text: '1 = 거의 못 함 · 5 = 아주 잘 됨' }),
+        field('방해 요인 (여러 개)', chipGroup('방해 요인', BLOCKERS, (id) => d.blockers.indexOf(id) !== -1, (id) => {
+          const at = d.blockers.indexOf(id); if (at === -1) d.blockers.push(id); else d.blockers.splice(at, 1); changed(); rerender();
+        }, 'blk')),
+        field('한 줄 돌아보기', el('div', { class: 'stack' }, note, counter), pid + '-note'),
+        el('div', { class: 'row' },
+          el('button', {
+            type: 'button', class: 'btn btn-primary', text: '기록 마치기',
+            onClick() { recordOpen[b.id] = false; openState[b.id] = false; save(); rerender(); SM.ui.toast('기록했어. 수고했어!'); }
+          }),
+          el('button', {
+            type: 'button', class: 'btn btn-ghost', text: '기록 지우기',
+            async onClick() {
+              const ok = await SM.ui.confirmDialog('이 블록의 실행 기록을 지울까?', { okText: '지우기', cancelText: '그대로 두기' });
+              if (!ok) return;
+              delete b.done; recordOpen[b.id] = false; save(); rerender();
+            }
+          })
+        )
+      ));
+      return card;
+    }
+
+    function renderList() {
+      SM.ui.clear(list);
+      blocks.forEach((b, i) => list.appendChild(renderBlock(i)));
+      if (!blocks.length) list.appendChild(el('li', { class: 'muted empty-day', text: '아직 블록이 없어. 아래에서 추가해 볼까?' }));
+      addBtn.disabled = blocks.length >= MAX_BLOCKS;
+      countText.textContent = `${blocks.length}/${MAX_BLOCKS}`;
+      updateSummary();
+    }
+
+    function move(i, dir, fk) {
+      const id = blocks[i].id;
+      blocks = moveBlock(blocks, i, dir);
+      save(); renderList();
+      const btn = list.querySelector(`[data-block="${id}"] [data-fk="${fk}"]`);
+      const fallback = list.querySelector(`[data-block="${id}"] [data-fk="toggle"]`);
+      (btn && !btn.disabled ? btn : fallback).focus();
+    }
+
+    async function remove(i) {
+      const b = blocks[i];
+      const ok = await SM.ui.confirmDialog(`${i + 1}번 블록${b.subject ? `(${b.subject})` : ''}을 지울까?`, { okText: '지우기', cancelText: '그대로 두기' });
+      if (!ok) return;
+      blocks = blocks.filter((x) => x !== b);
+      save(); renderList();
+      addBtn.focus();
+    }
+
+    function onAdd() {
+      const last = blocks[blocks.length - 1];
+      const r = addBlock(blocks, newBlock({ start: last && last.end ? last.end : '' }));
+      if (!r.added) { SM.ui.toast(`하루에 ${MAX_BLOCKS}개까지 만들 수 있어.`); return; }
+      blocks = r.blocks;
+      save(); renderList();
+      const nb = blocks[blocks.length - 1];
+      const t = list.querySelector(`[data-block="${nb.id}"] [data-fk^="subj-"]`);
+      if (t) t.focus();
+    }
+
+    async function copyYesterday() {
+      const y = instance.getDay(SM.date.addDays(iso, -1));
+      if (!y.length) { SM.ui.toast('어제 만든 블록이 없어.'); return; }
+      if (blocks.length) {
+        const ok = await SM.ui.confirmDialog(`어제 블록 ${y.length}개를 오늘 블록 뒤에 붙일까?`, { okText: '붙이기', cancelText: '그만두기' });
+        if (!ok) return;
+      }
+      const copies = copyPlan(y);
+      let n = 0;
+      copies.forEach((c) => { const r = addBlock(blocks, c); if (r.added) { blocks = r.blocks; n++; } });
+      save(); renderList();
+      SM.ui.toast(n < copies.length ? `${MAX_BLOCKS}개까지만 가져왔어.` : `어제 블록 ${n}개를 가져왔어.`);
+    }
+
+    renderList();
+
+    const root = el('div', { class: 'stack' },
+      el('div', { class: 'row' },
+        el('h3', { class: 'month-title grow', text: `${SM.date.formatKorean(iso)}${iso === today ? ' · 오늘' : ''}` }),
+        el('a', { href: `#/planner/week?w=${wk}`, class: 'link-small', text: '이번 주 보기' })
+      ),
+      el('div', { class: 'card' }, summaryLine),
+      list,
+      el('div', { class: 'row wrap' }, addBtn, countText,
+        el('button', { type: 'button', class: 'btn', text: '어제 블록 복사', onClick: copyYesterday }))
+    );
+
+    return {
+      node: root,
+      cleanup() { if (dirty) save(); else persist.cancel(); }
+    };
+  }
+
   SM.createPlanner = createPlanner;
   SM.planner = Object.assign(instance, {
     monthKeyForWeek, shiftMonth, calendarRows, ddayFrom, normalize, ddayEl, stripEl, query,
     EVENT_KINDS, EXAM_KINDS,
     DAY_KEYS, normalizeWeek, addStrategyToWeek, cellEntries, subjectDays, clumped, spreadSuggestion, applySpread,
-    copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek
+    copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek,
+    MAX_BLOCKS, UNITS, PLACES, WITH, MODES, BLOCKERS, newBlock, addBlock, moveBlock, prefillDay, suggestApplied,
+    copyPlan, newDone, envHints, doneSummary, minutesText
   });
 
   if (typeof SM.route === 'function') {
