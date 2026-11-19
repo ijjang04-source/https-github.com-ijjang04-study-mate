@@ -244,10 +244,7 @@
             text: plan.confirmed ? '✓ 이 전략으로 하는 중' : '이 전략으로 할게',
             onClick: confirmPlan
           }),
-          el('button', {
-            type: 'button', class: 'btn', text: '나만의 일곱 가지 전략 만들기',
-            onClick: () => SM.ui.toast('곧 열려. 조금만 기다려 줘!')
-          })
+          el('a', { href: '#/strategy/seven', class: 'btn', text: '나만의 일곱 가지 전략 만들기' })
         )
       ].forEach((n) => { if (n) root.appendChild(n); });
     }
@@ -278,7 +275,152 @@
     return root;
   }
 
+  // =====================================================================
+  // #/strategy/seven 나만의 일곱 가지 전략
+  // plan.sevenRules = [{ text, strategyId|null, habitId|null }] (7칸, 빈 칸은 text '')
+  // =====================================================================
+
+  const SEVEN = 7;
+
+  function nameOf(rule) {
+    if (!rule) return null;
+    if (rule.strategyId) {
+      const s = SM.data.strategies.find((x) => x.id === rule.strategyId);
+      return s ? s.name : null;
+    }
+    if (rule.habitId) {
+      const h = SM.data.habits.find((x) => x.id === rule.habitId);
+      return h ? h.name : null;
+    }
+    return null;
+  }
+
+  function padSeven(rules) {
+    const out = (Array.isArray(rules) ? rules : []).slice(0, SEVEN).map((r) => ({
+      text: String((r && r.text) || ''),
+      strategyId: (r && r.strategyId) || null,
+      habitId: (r && r.habitId) || null
+    }));
+    while (out.length < SEVEN) out.push({ text: '', strategyId: null, habitId: null });
+    return out;
+  }
+
+  function sevenScreen() {
+    const el = SM.ui.el;
+    const profile = me();
+    const found = latestResult();
+    if (!found) {
+      return el('div', { class: 'card stack' },
+        el('h2', { text: '나만의 일곱 가지 전략' }),
+        el('p', { text: '먼저 진단을 해 볼까? 결과에 맞춰 초안을 만들어 줄게.' }),
+        el('a', { href: '#/test', class: 'btn btn-primary', text: '진단하러 가기' })
+      );
+    }
+    const { latest } = found;
+    const planKey = SM.keys.plan(profile.sid);
+    let plan = SM.store.get(planKey, null) || {};
+
+    let rules;
+    if (Array.isArray(plan.sevenRules) && plan.sevenRules.length) {
+      rules = padSeven(plan.sevenRules);
+    } else {
+      rules = padSeven(SM.recommend.sevenDrafts(latest, plan));
+      persist();
+    }
+
+    const saved = SM.ui.savedIndicator();
+
+    function persist() {
+      SM.store.update(planKey, (p) => Object.assign({}, p || {}, {
+        sevenRules: rules.map((r) => ({ text: r.text, strategyId: r.strategyId, habitId: r.habitId })),
+        updatedAt: new Date().toISOString()
+      }), {});
+    }
+
+    const debouncedSave = SM.ui.debounce(() => { persist(); saved.set('saved'); }, 500);
+
+    function warningText(text) {
+      const c = SM.recommend.checkRule(text);
+      if (c.ok) return '';
+      if (c.missing === 'when') return "언제(상황)가 빠진 것 같아. '~하면'이나 '~전에'를 넣어 볼래?";
+      return '무엇을(행동) 할지도 적어 줄래?';
+    }
+
+    const list = el('ol', { class: 'seven-list' });
+
+    function row(i) {
+      const r = rules[i];
+      const inputId = 'seven-' + i;
+      const tag = el('span', { class: 'tag', text: nameOf(r) || '직접 작성' });
+      const warn = el('p', { class: 'field-warn', id: inputId + '-warn', 'aria-live': 'polite', text: warningText(r.text) });
+      const input = el('textarea', {
+        id: inputId, rows: 2, maxlength: 120, 'aria-describedby': inputId + '-warn',
+        'aria-label': `${i + 1}번째 전략 문장`,
+        onInput(e) {
+          rules[i].text = e.target.value;
+          if (!e.target.value.trim()) { rules[i].strategyId = null; rules[i].habitId = null; tag.textContent = '직접 작성'; }
+          warn.textContent = warningText(e.target.value);
+          saved.set('saving');
+          debouncedSave();
+        }
+      });
+      input.value = r.text;
+
+      function replaceWith(next) {
+        rules[i] = next;
+        input.value = next.text;
+        tag.textContent = nameOf(next) || '직접 작성';
+        warn.textContent = warningText(next.text);
+        persist();
+        saved.set('saved');
+      }
+
+      return el('li', { class: 'seven-item stack' },
+        el('div', { class: 'row' }, el('span', { class: 'seven-num', text: String(i + 1) }), tag),
+        input,
+        warn,
+        el('div', { class: 'row' },
+          el('button', {
+            type: 'button', class: 'btn', text: '다시 만들기',
+            onClick() {
+              const next = SM.recommend.nextDraft(latest, plan, rules, i);
+              if (!next) { SM.ui.toast('더 만들 수 있는 초안이 없어.'); return; }
+              replaceWith({ text: next.text, strategyId: next.strategyId, habitId: next.habitId });
+            }
+          }),
+          el('button', {
+            type: 'button', class: 'btn btn-ghost', text: '비우기',
+            onClick() { replaceWith({ text: '', strategyId: null, habitId: null }); input.focus(); }
+          })
+        )
+      );
+    }
+
+    for (let i = 0; i < SEVEN; i++) list.appendChild(row(i));
+
+    return {
+      node: el('div', { class: 'stack' },
+        el('div', { class: 'card stack' },
+          el('h2', { text: '나만의 일곱 가지 전략', tabindex: '-1' }),
+          el('p', { text: '"나는 [언제] [무엇을] 한다" 문장 7개를 만들어 보자. 초안을 고쳐서 내 말로 바꿔도 돼.' }),
+          el('p', { class: 'muted', text: '언제(상황)와 무엇을(행동)이 모두 들어가야 해.' }),
+          el('p', { class: 'muted', text: '예) 나는 저녁 9시가 되면 영단어 카드 20개를 떠올려 본다.' })
+        ),
+        list,
+        el('div', { class: 'row' }, saved.node),
+        el('p', { class: 'muted', text: '이 문장들은 플래너 위쪽과 주간 점검에 보여 줄게.' }),
+        el('a', { href: '#/strategy', class: 'btn', text: '전략으로 돌아가기' })
+      ),
+      cleanup() {
+        // 떠나기 전에 입력 중이던 내용을 바로 저장
+        debouncedSave.cancel();
+        persist();
+      }
+    };
+  }
+
   if (typeof SM.route === 'function') {
     SM.route('#/strategy', { title: '맞춤 전략', render: strategyScreen });
+    SM.route('#/strategy/seven', { title: '나만의 일곱 가지 전략', tab: 'strategy', render: sevenScreen });
   }
 })(window.SM = window.SM || {});

@@ -601,3 +601,93 @@
       '저녁 늦게는 가벼운 복습만 하고 어려운 과목은 아침으로 옮겨.', '늦은 밤에 무리하지 않고 정리했나?')
   ];
 })(window.SM = window.SM || {});
+
+// ---------- 나만의 일곱 가지 전략: "나는 [상황] [행동]." ----------
+(function (SM) {
+  'use strict';
+
+  // 상황(모두 '~면' 또는 '~전에'로 끝나는 조건)
+  SM.data.ruleSituations = {
+    home: '학교에서 돌아와 책상에 앉으면',
+    newUnit: '새 단원을 시작하면',
+    beforeSolve: '문제를 풀기 전에',
+    exam3: '시험 3일 전이 되면',
+    wrong: '틀린 문제가 나오면',
+    finish: '공부를 마치면',
+    examDay: '시험 보기 10분 전이 되면',
+    weekend: '주말이 되면',
+    unitEnd: '단원을 마치면',
+    submit: '답을 내기 전에',
+    beforeMemo: '외울 내용이 생기면',
+    night: '밤 11시가 되면'
+  };
+
+  // chrono 극이 있을 때 공부 시작 상황 대신 쓰는 시간 표현
+  SM.data.ruleTimes = {
+    evening: ['저녁 9시가 되면', '저녁 8시가 되면', '저녁 10시가 되면'],
+    morning: ['아침 7시가 되면', '등교 전 아침 시간이 되면', '아침 8시가 되면']
+  };
+
+  // when: ruleSituations 키, act: '~한다'로 끝나는 행동({subject}는 과목 이름으로 바뀜)
+  SM.data.sevenRuleParts = {
+    strategies: {
+      chunking: { when: 'newUnit', act: '외울 항목을 의미별로 3~5개씩 묶는다' },
+      acronym: { when: 'exam3', act: '외울 목록의 머리글자로 기억 단서를 만든다' },
+      loci: { when: 'exam3', act: '순서를 외울 항목을 익숙한 장소에 하나씩 놓아 본다' },
+      keyword: { when: 'home', act: '헷갈리는 단어마다 이미지 단서를 하나씩 만든다' },
+      automation: { when: 'home', act: '{subject} 기초 문제 세트를 시간을 재며 푼다' },
+      elaboration: { when: 'finish', act: '오늘 배운 내용을 내 말로 바꿔 한 줄 적는다' },
+      elabQuestion: { when: 'finish', act: '배운 내용에 "왜 그럴까?" 질문을 하나 만들고 답한다' },
+      selfExplain: { when: 'wrong', act: '풀이를 한 줄씩 스스로 설명한다' },
+      examples: { when: 'newUnit', act: '새 개념마다 내 예시를 2개 만든다' },
+      workedExample: { when: 'newUnit', act: '{subject} 풀이 예제를 익힌 뒤 가리고 다시 풀어 본다' },
+      refutation: { when: 'wrong', act: '내가 헷갈린 생각과 틀린 이유를 함께 적는다' },
+      teach: { when: 'finish', act: '책을 덮고 백지에 배운 내용을 모두 적어 본다' },
+      organize: { when: 'exam3', act: '{subject} 시험 범위를 표나 연표로 정리한다' },
+      conceptMap: { when: 'finish', act: '단원 개념을 화살표로 이어 개념도를 그린다' },
+      dualCoding: { when: 'finish', act: '글로 된 설명을 그림으로 바꿔 그리고 말로 설명한다' },
+      imagery: { when: 'home', act: '읽은 내용을 한 장면으로 떠올려 본다' },
+      retrieval: { when: 'finish', act: '책을 덮고 오늘 배운 {subject} 내용을 떠올려 적는다' },
+      spacing: { when: 'finish', act: '오늘 내용의 복습 날짜를 1일·3일·7일 뒤로 적어 둔다' },
+      interleave: { when: 'beforeSolve', act: '{subject} 유형을 섞어 고르고 풀 방법을 먼저 적는다' },
+      pretest: { when: 'newUnit', act: '배우기 전에 문제를 몇 개 먼저 풀어 본다' },
+      errorLog: { when: 'wrong', act: '틀린 이유를 개념·실수·시간 중 하나로 분류해 적는다' },
+      metacog: { when: 'home', act: '오늘 끝나면 할 수 있어야 할 목표를 한 줄 적는다' },
+      planDoc: { when: 'home', act: '오늘 할 일을 계획표에 적는다' },
+      ifThen: { when: 'finish', act: '다음 공부 시간과 할 일을 정해 둔다' },
+      woop: { when: 'exam3', act: '바라는 결과와 내 안의 장애물, 대처 행동을 적는다' },
+      timeEnv: { when: 'home', act: '휴대폰을 손이 닿지 않는 곳에 둔다' },
+      effort: { when: 'home', act: '오늘 분량을 숫자로 정하고 끝까지 한다' },
+      helpSeek: { when: 'wrong', act: '모르는 부분을 구체적인 질문으로 적어 선생님께 묻는다' },
+      havruta: { when: 'newUnit', act: '짝과 질문을 하나씩 만들어 주고받는다' },
+      coop: { when: 'exam3', act: '스터디 조에서 맡은 부분을 친구들에게 설명한다' },
+      expressiveWriting: { when: 'examDay', act: '걱정되는 것을 종이에 솔직하게 적는다' },
+      reciprocal: { when: 'beforeSolve', act: '{subject} 지문 제목으로 내용을 예측하고 질문을 만든다' }
+    },
+    habits: {
+      soloMock: { when: 'weekend', act: '혼자 시간을 재고 실전처럼 모의 문제를 푼다' },
+      contextMap: { when: 'unitEnd', act: '개념도를 그려 개념 사이 관계를 확인한다' },
+      reviewRoutine: { when: 'submit', act: '조건 다시 읽기, 소거법, 계산 확인을 차례로 한다' },
+      timerPractice: { when: 'beforeSolve', act: '문제마다 목표 시간을 정한다' },
+      readingDrill: { when: 'beforeSolve', act: '지시문의 조건에 밑줄을 긋는다' },
+      chartRead: { when: 'home', act: '표나 그래프 하나를 한 문장으로 해석한다' },
+      bigPictureMap: { when: 'newUnit', act: '목차를 한 장 맵으로 그린다' },
+      detailQuiz: { when: 'unitEnd', act: '요소별 짧은 퀴즈로 빠진 세부를 확인한다' },
+      whyQuestion: { when: 'finish', act: '외운 사실에 "왜?" 질문을 붙여 답한다' },
+      drillVolume: { when: 'home', act: '정한 양만큼 계산·암기 문제를 반복한다' },
+      ruleSentence: { when: 'finish', act: '예제에서 찾은 규칙을 한 문장으로 적는다' },
+      exceptionCases: { when: 'finish', act: '예외나 변형 문제를 하나 더 푼다' },
+      conceptCheck: { when: 'beforeSolve', act: '1분 동안 관련 개념을 떠올려 적는다' },
+      timeLimit: { when: 'beforeSolve', act: '생각할 시간을 정하고 시간이 되면 바로 푼다' },
+      writeAgain: { when: 'finish', act: '말로 정리한 내용을 짧게 필기로 남긴다' },
+      chartAdd: { when: 'finish', act: '요약 노트에 도표 하나를 붙여 해석한다' },
+      verbalize: { when: 'finish', act: '해 본 내용을 개념 용어로 설명한다' },
+      conceptStep: { when: 'finish', act: '사례를 본 뒤 개념 정의를 정리한다' },
+      applyCases: { when: 'finish', act: '정리한 개념을 사례나 응용 문제에 적용한다' },
+      lessRote: { when: 'beforeMemo', act: '왜 그런지 이유를 한 줄 먼저 적는다' },
+      lowStakes: { when: 'home', act: '틀려도 되는 가벼운 퀴즈를 하나 푼다' },
+      sleepGuard: { when: 'night', act: '공부를 정리하고 잠자리에 든다' },
+      noLateNight: { when: 'night', act: '어려운 과목은 내일 아침으로 미루고 가볍게 복습한다' }
+    }
+  };
+})(window.SM = window.SM || {});

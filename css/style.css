@@ -688,6 +688,44 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 .habit { display: grid; gap: 4px; }
 .habit p { margin: 0; }
 
+/* ---------- 일곱 가지 전략 ---------- */
+
+.seven-list { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(var(--gap) * 1.5); }
+
+.seven-item {
+  padding: calc(var(--gap) * 1.5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.seven-item textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: var(--gap);
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) / 2);
+  resize: vertical;
+}
+
+.seven-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+.field-warn { margin: 0; color: var(--warn); }
+.field-warn:empty { display: none; }
+.field-warn::before { content: "💡 "; }
+
 /* ---------- 토스트 ---------- */
 
 .toast-host {

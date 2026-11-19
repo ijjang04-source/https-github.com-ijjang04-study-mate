@@ -186,8 +186,131 @@
     return strong ? strong.key : poles.length ? poles[0].key : null;
   }
 
+  // ---------- 나만의 일곱 가지 전략 ----------
+
+  const SEVEN = 7;
+  const MAX_STRATEGIES = 6;
+  const MAX_HABITS = 2;
+
+  function chronoOf(result) {
+    const p = SM.score.poles(result).find((x) => x.key.indexOf('chrono:') === 0);
+    return p ? p.key.split(':')[1] : null;
+  }
+
+  function makeText(when, act, subject) {
+    return `나는 ${when} ${act.replace(/\{subject\}/g, subject || '').replace(/\s+/g, ' ').trim()}.`;
+  }
+
+  /**
+   * 후보 목록(순서 고정).
+   * 전략: 과목별 plan 전략(없으면 추천 상위 3) → 이어지는 순위, 과목을 번갈아 가며. 같은 전략은 한 번만.
+   * 습관: strong 극 우선 → mild 극.
+   * → [{ kind:'strategy'|'habit', id, subject, when(키), act, name }]
+   */
+  function sevenPool(result, plan) {
+    const parts = SM.data.sevenRuleParts;
+    const subjects = (result && result.subjects) || [];
+    const lists = subjects.map((s) => {
+      const picked = (plan && plan.strategies && plan.strategies[s]) || forSubject(result, s).map((x) => x.id);
+      const rest = rank(result, s).map((x) => x.id).filter((id) => picked.indexOf(id) === -1);
+      return { subject: s, ids: picked.concat(rest) };
+    });
+    const strategies = [];
+    const seen = {};
+    const longest = Math.max(0, ...lists.map((l) => l.ids.length));
+    for (let i = 0; i < longest; i++) {
+      lists.forEach((l) => {
+        const id = l.ids[i];
+        if (!id || seen[id] || !parts.strategies[id]) return;
+        seen[id] = true;
+        const st = SM.data.strategies.find((x) => x.id === id);
+        strategies.push({ kind: 'strategy', id, subject: l.subject, when: parts.strategies[id].when, act: parts.strategies[id].act, name: st.name });
+      });
+    }
+
+    const poles = SM.score.poles(result);
+    const ordered = poles.filter((p) => p.band === 'strong').concat(poles.filter((p) => p.band !== 'strong'));
+    const habitList = [];
+    ordered.forEach((p) => {
+      SM.data.habits.forEach((h) => {
+        if (h.poles.indexOf(p.key) !== -1 && habitList.indexOf(h) === -1 && parts.habits[h.id]) habitList.push(h);
+      });
+    });
+    const habitItems = habitList.map((h) => ({ kind: 'habit', id: h.id, subject: null, when: parts.habits[h.id].when, act: parts.habits[h.id].act, name: h.name }));
+    return { strategies, habits: habitItems };
+  }
+
+  /** 후보 하나를 문장으로. timeWhen이 있으면 상황을 그 시간 표현으로 바꾼다. */
+  function draftOf(item, timeWhen) {
+    const when = timeWhen || SM.data.ruleSituations[item.when] || '';
+    return {
+      text: makeText(when, item.act, item.subject),
+      strategyId: item.kind === 'strategy' ? item.id : null,
+      habitId: item.kind === 'habit' ? item.id : null,
+      name: item.name
+    };
+  }
+
+  /**
+   * 초안 7개 이하: 보완 습관 최대 2개 + 전략 최대 6개(합 7 이하). 중복 없음.
+   * chrono 극이 있으면 '공부를 시작하는 상황(home)' 문장을 그 시간대로 바꾼다(없으면 첫 문장).
+   */
+  function sevenDrafts(result, plan) {
+    const pool = sevenPool(result, plan);
+    const habitsPicked = pool.habits.slice(0, MAX_HABITS);
+    const stratPicked = pool.strategies.slice(0, Math.min(MAX_STRATEGIES, SEVEN - habitsPicked.length));
+    const items = stratPicked.concat(habitsPicked);
+
+    const chrono = chronoOf(result);
+    const times = chrono ? SM.data.ruleTimes[chrono].slice() : [];
+    let timeTargets = [];
+    if (times.length) {
+      timeTargets = items.map((it, i) => (it.when === 'home' ? i : -1)).filter((i) => i !== -1).slice(0, times.length);
+      if (!timeTargets.length && items.length) timeTargets = [0];
+    }
+    return items.map((it, i) => {
+      const t = timeTargets.indexOf(i);
+      return draftOf(it, t !== -1 ? times[t] : null);
+    });
+  }
+
+  /** '다시 만들기': 지금 쓰고 있지 않은 다음 후보로 만든 초안. 없으면 null. */
+  function nextDraft(result, plan, rules, idx) {
+    const pool = sevenPool(result, plan);
+    const all = pool.strategies.concat(pool.habits);
+    const used = {};
+    (rules || []).forEach((r, i) => {
+      if (i === idx || !r) return;
+      if (r.strategyId) used['s:' + r.strategyId] = true;
+      if (r.habitId) used['h:' + r.habitId] = true;
+    });
+    const cur = rules && rules[idx];
+    const curKey = cur ? (cur.strategyId ? 's:' + cur.strategyId : cur.habitId ? 'h:' + cur.habitId : null) : null;
+    const keyOf = (it) => (it.kind === 'strategy' ? 's:' : 'h:') + it.id;
+    const free = all.filter((it) => !used[keyOf(it)]);
+    if (!free.length) return null;
+    // 지금 것 다음 후보부터 돌아가며 고른다.
+    const at = free.findIndex((it) => keyOf(it) === curKey);
+    const pick = free[(at + 1) % free.length];
+    if (keyOf(pick) === curKey) return null;
+    return draftOf(pick, null);
+  }
+
+  /** 문장 형식 점검: '~면'(또는 '~전에') 조건절과 그 뒤 행동이 있는지. 저장은 막지 않는다. */
+  function checkRule(text) {
+    const t = String(text || '').trim();
+    if (!t) return { ok: true, missing: null, empty: true };
+    if (/(면|전에)[\s,.]*$/.test(t)) return { ok: false, missing: 'act', empty: false };
+    const m = /(면|전에)[\s,]+(.+)$/.exec(t);
+    if (!m) return { ok: false, missing: 'when', empty: false };
+    const act = m[2].replace(/[.\s]+$/, '');
+    if (act.length < 2) return { ok: false, missing: 'act', empty: false };
+    return { ok: true, missing: null, empty: false };
+  }
+
   SM.recommend = {
     forSubject, rank, explain, alternative, habits, environment, cardPole,
-    weaknessMatch, styleFit, poleLean, candidates, CORE
+    weaknessMatch, styleFit, poleLean, candidates, CORE,
+    sevenPool, sevenDrafts, nextDraft, checkRule
   };
 })(window.SM = window.SM || {});
