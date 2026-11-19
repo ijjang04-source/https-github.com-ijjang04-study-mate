@@ -758,6 +758,17 @@ button.cal-cell { cursor: pointer; }
 .mini-fill { display: block; height: 100%; background: var(--accent); border-radius: 7px; }
 .mini-value { font-size: 14px; text-align: right; }
 
+.badge { margin-left: 4px; padding: 0 6px; font-size: 12px; font-weight: 700; color: var(--on-accent); background: var(--accent); border-radius: 999px; }
+.private-note { margin: 0; padding: var(--gap); background: var(--accent-weak); border-radius: var(--radius); }
+.scale-item p { margin: 0; }
+.scale .chip { min-width: 44px; justify-content: center; padding: 0; }
+.rate-row { display: grid; grid-template-columns: minmax(5em, 8em) 1fr 3.5em; align-items: center; gap: var(--gap); }
+.bar-label { font-size: 14px; overflow-wrap: anywhere; }
+.feedback-lines { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.strategy-mini { padding: var(--gap); border: 1px solid var(--line); border-radius: var(--radius); }
+.strategy-mini h4 { margin: 0; }
+.strategy-mini ol { margin: 0; padding-left: 1.3em; }
+
 /* ---------- 일간 플래너 ---------- */
 
 .day-summary { margin: 0; font-weight: 700; word-break: keep-all; }
