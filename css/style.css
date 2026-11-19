@@ -398,6 +398,89 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 /* 채팅 화면에서는 입력창이 탭바 바로 위에 붙으므로 아래 여백을 줄인다. */
 #view:has(> .chat) { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); }
 
+/* ---------- 진단 ---------- */
+
+.test-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.progress {
+  flex: 1;
+  height: 10px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s;
+}
+
+.progress-text {
+  min-width: 4.5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.area-intro { background: var(--accent-weak); border-color: var(--accent); }
+.area-intro p { margin: 0; font-weight: 600; }
+
+.answer-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.answer-btn {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--gap) * 1.5);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--gap) calc(var(--gap) * 2);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.answer-key {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+/* 선택된 답: 색 + 굵기 + ✓ */
+.answer-btn[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-weak);
+  border: 2px solid var(--accent);
+  font-weight: 700;
+}
+
+.answer-btn[aria-pressed="true"]::after { content: "✓"; margin-left: auto; }
+
+.test-nav { justify-content: space-between; }
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill { transition: none; }
+}
+
 /* ---------- 토스트 ---------- */
 
 .toast-host {
