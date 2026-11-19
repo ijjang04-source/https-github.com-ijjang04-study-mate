@@ -782,6 +782,20 @@ button.cal-cell { cursor: pointer; }
 .cell-line { display: block; }
 .print-only { display: none; }
 
+/* ---------- 우리 반 피드 ---------- */
+
+.feed-card { min-width: 0; overflow-wrap: anywhere; }
+.feed-goals { margin: 0; padding-left: 1.2em; }
+.chip-tag { font-size: 16px; }
+.comment-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--gap); }
+.comment { padding: var(--gap); border: 1px solid var(--line); border-radius: var(--radius); }
+.comment p { margin: 0; }
+.comment-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-hidden { border-style: dashed; opacity: 0.85; }
+.small-meta { font-size: 14px; }
+.sheet-scroll { max-height: 85vh; overflow-y: auto; width: min(560px, calc(100vw - 32px)); }
+.sheet-scroll .strategy-card { box-shadow: none; border: 0; padding: 0; }
+
 /* ---------- 일간 플래너 ---------- */
 
 .day-summary { margin: 0; font-weight: 700; word-break: keep-all; }

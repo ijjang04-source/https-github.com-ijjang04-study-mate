@@ -39,6 +39,64 @@
     return JSON.stringify(a.strategies) === JSON.stringify(b.strategies);
   }
 
+  /**
+   * 전략 설명 카드(10단계). 다른 화면(피드)에서도 쓴다.
+   * latest: 내 최근 진단 결과(없으면 개인 맞춤 부분을 뺀다), opts: { rank: 번호|null, actions: 노드|null }
+   */
+  function buildStrategyCard(latest, subject, sid, opts) {
+    const el = SM.ui.el;
+    const o = opts || {};
+    const idx = typeof o.rank === 'number' ? o.rank : null;
+    const s = SM.data.strategies.find((x) => x.id === sid);
+    const info = (latest && SM.recommend.explain(latest, subject, sid)) || { reasons: [], pole: null };
+    const pole = latest ? SM.recommend.cardPole(latest, info.pole) : null;
+    const way = pole ? SM.data.styleWays[pole] : null;
+    const env = latest ? SM.recommend.environment(latest) : { lines: ['편한 곳 아무 데나 괜찮아.'] };
+    const evText = EVIDENCE_TEXT[s.evidence];
+
+    const wayText = way ? (s.category === 'D' ? way.retrieval : way.understand) : null;
+    const placeLines = way && (way.place || way.with)
+      ? [way.place ? `추천 장소: ${way.place}` : null, way.with ? `방식: ${way.with}` : null].filter(Boolean)
+      : env.lines;
+
+    return el('article', { class: 'card stack strategy-card' },
+      el('div', { class: 'strategy-head' },
+        idx !== null ? el('span', { class: 'rank-badge', text: `${idx + 1}` }) : null,
+        el('h3', { text: s.name }),
+        el('span', { class: 'tag', text: `${s.category} ${SM.data.strategyCategories[s.category]}` }),
+        el('span', { class: 'evidence', 'aria-label': `근거 수준 ${evText}` },
+          el('span', { 'aria-hidden': 'true', text: EVIDENCE_STARS[s.evidence] + ' ' }), `근거 ${evText}`)
+      ),
+      el('section', null,
+        el('h4', { text: latest ? '왜 나에게?' : '어떤 전략이야?' }),
+        info.reasons.length ? el('ul', null, info.reasons.map((r) => el('li', { text: r }))) : null,
+        el('p', { class: 'muted', text: s.why })
+      ),
+      el('section', null,
+        el('h4', { text: '하는 법' }),
+        el('ol', null, s.howTo.map((h) => el('li', { text: h })))
+      ),
+      wayText ? el('section', null,
+        el('h4', { text: '내 스타일로 하는 법' }),
+        el('p', { class: 'muted', text: `(${SM.recommend.poleLean(pole)})` }),
+        el('p', { text: wayText })
+      ) : el('section', null,
+        el('h4', { text: '내 스타일로 하는 법' }),
+        el('p', { text: latest ? '여러 방식을 고르게 쓰는 편이라 기본 방법대로 하면 돼.' : '진단을 하면 내 스타일로 하는 법도 보여 줄게.' })
+      ),
+      way ? el('section', null, el('h4', { text: '보완할 점' }), el('p', { text: way.complement })) : null,
+      el('section', null,
+        el('h4', { text: '추천 장소·방식' }),
+        el('ul', null, placeLines.map((l) => el('li', { text: l })))
+      ),
+      el('details', { class: 'source' },
+        el('summary', { text: '출처' }),
+        el('p', { class: 'muted', text: s.source })
+      ),
+      o.actions || null
+    );
+  }
+
   function strategyScreen() {
     const el = SM.ui.el;
     const profile = me();
@@ -96,57 +154,13 @@
     // ---------- 카드 ----------
 
     function strategyCard(subject, sid, idx) {
-      const s = SM.data.strategies.find((x) => x.id === sid);
-      const info = SM.recommend.explain(latest, subject, sid) || { reasons: [], pole: null };
-      const pole = SM.recommend.cardPole(latest, info.pole);
-      const way = pole ? SM.data.styleWays[pole] : null;
-      const env = SM.recommend.environment(latest);
-      const evText = EVIDENCE_TEXT[s.evidence];
-
-      const wayText = way ? (s.category === 'D' ? way.retrieval : way.understand) : null;
-      const placeLines = way && (way.place || way.with)
-        ? [way.place ? `추천 장소: ${way.place}` : null, way.with ? `방식: ${way.with}` : null].filter(Boolean)
-        : env.lines;
-
-      return el('article', { class: 'card stack strategy-card' },
-        el('div', { class: 'strategy-head' },
-          el('span', { class: 'rank-badge', text: `${idx + 1}` }),
-          el('h3', { text: s.name }),
-          el('span', { class: 'tag', text: `${s.category} ${SM.data.strategyCategories[s.category]}` }),
-          el('span', { class: 'evidence', 'aria-label': `근거 수준 ${evText}` },
-            el('span', { 'aria-hidden': 'true', text: EVIDENCE_STARS[s.evidence] + ' ' }), `근거 ${evText}`)
-        ),
-        el('section', null,
-          el('h4', { text: '왜 나에게?' }),
-          el('ul', null, info.reasons.map((r) => el('li', { text: r }))),
-          el('p', { class: 'muted', text: s.why })
-        ),
-        el('section', null,
-          el('h4', { text: '하는 법' }),
-          el('ol', null, s.howTo.map((h) => el('li', { text: h })))
-        ),
-        wayText ? el('section', null,
-          el('h4', { text: '내 스타일로 하는 법' }),
-          el('p', { class: 'muted', text: `(${SM.recommend.poleLean(pole)})` }),
-          el('p', { text: wayText })
-        ) : el('section', null,
-          el('h4', { text: '내 스타일로 하는 법' }),
-          el('p', { text: '여러 방식을 고르게 쓰는 편이라 기본 방법대로 하면 돼.' })
-        ),
-        way ? el('section', null, el('h4', { text: '보완할 점' }), el('p', { text: way.complement })) : null,
-        el('section', null,
-          el('h4', { text: '추천 장소·방식' }),
-          el('ul', null, placeLines.map((l) => el('li', { text: l })))
-        ),
-        el('details', { class: 'source' },
-          el('summary', { text: '출처' }),
-          el('p', { class: 'muted', text: s.source })
-        ),
-        el('div', { class: 'row' },
+      return buildStrategyCard(latest, subject, sid, {
+        rank: idx,
+        actions: el('div', { class: 'row' },
           el('button', { type: 'button', class: 'btn btn-primary', text: '플래너에 추가', onClick: () => addToPlanner(subject, sid) }),
           el('button', { type: 'button', class: 'btn', text: '다른 전략 보기', onClick: () => swap(subject, idx) })
         )
-      );
+      });
     }
 
     // ---------- 동작 ----------
@@ -424,6 +438,8 @@
       }
     };
   }
+  SM.strategyView = { card: buildStrategyCard };
+
 
   if (typeof SM.route === 'function') {
     SM.route('#/strategy', { title: '맞춤 전략', render: strategyScreen });

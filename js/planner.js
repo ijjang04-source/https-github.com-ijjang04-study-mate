@@ -345,9 +345,10 @@
     const M = data.month;
     let dirty = false;
 
-    const persist = SM.ui.debounce(() => { instance.save(mk, data); dirty = false; saved.set('saved'); }, 500);
+    function syncFeed() { if (SM.feed && typeof SM.feed.syncMonth === 'function') SM.feed.syncMonth(mk); }
+    const persist = SM.ui.debounce(() => { instance.save(mk, data); dirty = false; saved.set('saved'); syncFeed(); }, 500);
     function changed() { dirty = true; saved.set('saving'); persist(); }
-    function flush() { persist.cancel(); instance.save(mk, data); dirty = false; saved.set('saved'); }
+    function flush() { persist.cancel(); instance.save(mk, data); dirty = false; saved.set('saved'); syncFeed(); }
 
     const [y, m] = mk.split('-');
     const root = el('div', { class: 'stack' });
@@ -824,9 +825,11 @@
     }
 
     let dirty = false;
-    const persist = SM.ui.debounce(() => { instance.saveWeek(wk, week); dirty = false; saved.set('saved'); }, 500);
+    // 저장할 때마다 반 피드 스냅샷도 맞춘다(공개면 갱신, 아니면 삭제)
+    function syncFeed() { if (SM.feed && typeof SM.feed.syncWeek === 'function') SM.feed.syncWeek(wk); }
+    const persist = SM.ui.debounce(() => { instance.saveWeek(wk, week); dirty = false; saved.set('saved'); syncFeed(); }, 500);
     function changed() { dirty = true; saved.set('saving'); persist(); }
-    function flush() { persist.cancel(); instance.saveWeek(wk, week); dirty = false; saved.set('saved'); }
+    function flush() { persist.cancel(); instance.saveWeek(wk, week); dirty = false; saved.set('saved'); syncFeed(); }
 
     function subjects() {
       const base = (result && result.subjects) || [];
