@@ -680,6 +680,7 @@
       if (SM.chat && typeof SM.chat.say === 'function' && entry.chatFeedback !== sig) {
         entry.chatFeedback = sig;
         SM.store.set(key, SM.checkin.upsert(loadCheckins(), entry));
+        if (typeof SM.chat.notify === 'function') SM.chat.notify(first ? '이번 주 점검표를 냈어.' : '이번 주 점검표를 고쳐서 다시 냈어.');
         fbLines.forEach((l) => SM.chat.say(l));
         SM.feedback.evaluate(entry, mw).filter((r) => r.strategyId).forEach((r) => {
           const s = SM.data.strategies.find((x) => x.id === r.strategyId);

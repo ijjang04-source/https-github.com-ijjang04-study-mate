@@ -360,6 +360,7 @@
     const result = scoreBasic(progress.answers || {}, progress.subjects || []);
     SM.store.update(SM.keys.results(p.sid), (list) => (Array.isArray(list) ? list : []).concat([result]), []);
     SM.store.remove(SM.keys.testProgress(p.sid));
+    if (SM.chat && typeof SM.chat.notify === 'function') SM.chat.notify('학습 스타일 진단을 마쳤어. 결과를 정리해 뒀어.');
     location.hash = '#/result';
   }
 
@@ -374,6 +375,7 @@
       return arr;
     }, []);
     SM.store.remove(SM.keys.testProgressDeep(p.sid));
+    if (SM.chat && typeof SM.chat.notify === 'function') SM.chat.notify('심화 진단을 마쳤어. 결과에 더해 뒀어.');
     location.hash = '#/result';
   }
 
@@ -881,7 +883,7 @@
 
   SM.test = {
     buildOrder, buildDeepOrder, shuffle, resumeIndex, isAnswered, itemById, sectionIntro,
-    finish, finishDeep, AREA_INTRO, DISCLAIMER
+    finish, finishDeep, summary, AREA_INTRO, DISCLAIMER
   };
 
   if (typeof SM.route === 'function') {

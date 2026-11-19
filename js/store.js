@@ -21,7 +21,8 @@
     chat: (sid) => `chat:${sid}`,
     feed: (classId) => `feed:${classId}`,
     comments: (classId) => `comments:${classId}`,
-    feedSeen: (sid) => `feed-seen:${sid}`
+    feedSeen: (sid) => `feed-seen:${sid}`,
+    chatMeta: (sid) => `chat-meta:${sid}`
   };
 
   const SID_RE = /^[A-Za-z0-9]+-\d+-\d+-\d+$/;

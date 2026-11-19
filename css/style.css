@@ -979,3 +979,20 @@ button.cal-cell { cursor: pointer; }
   #view { max-width: none; padding: 0; }
   .card { box-shadow: none; border-color: #999; break-inside: avoid; }
 }
+
+/* ---------- 챗봇 알림 줄 ---------- */
+.msg-notice { align-self: center; max-width: 100%; }
+.chat-notice {
+  margin: 0;
+  padding: 4px 12px;
+  font-size: 16px;
+  color: var(--muted);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+}
+.chat-notice::before { content: '알림 · '; }
+a.chip { text-decoration: none; }
+
+/* ---------- 설정 ---------- */
+.settings input[type="text"] { width: 100%; max-width: 100%; box-sizing: border-box; }

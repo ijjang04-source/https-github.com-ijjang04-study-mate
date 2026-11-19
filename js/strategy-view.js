@@ -209,6 +209,7 @@
       plan.habits = SM.recommend.habits(latest).map((h) => h.id);
       save();
       SM.ui.toast('좋아, 이 전략으로 해 보자!');
+      if (SM.chat && typeof SM.chat.notify === 'function') SM.chat.notify('추천 전략을 저장했어. 플래너에 넣어 보자.');
       render();
     }
 

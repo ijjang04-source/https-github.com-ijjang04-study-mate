@@ -210,6 +210,11 @@
       const listC = loadComments(myClass());
       listC.push(c);
       store.set(SM.keys.comments(myClass()), listC);
+      // 계획 주인의 챗봇 기록에 짧게 남긴다
+      const owner = planOwner(planKey);
+      if (owner && owner !== p.sid && typeof deps.notify === 'function') {
+        try { deps.notify(c, owner); } catch (e) { /* 알림 실패는 무시 */ }
+      }
       return { ok: true, comment: c };
     }
 
@@ -274,12 +279,20 @@
     }
 
     /** 내 계획에 마지막으로 피드를 본 뒤 달린 새 댓글 수(반응·내 댓글·숨긴 댓글 제외) */
-    function unreadFor(sid) {
+    function unreadList(sid) {
       const classId = classIdOf(sid);
-      if (!classId) return 0;
+      if (!classId) return [];
       const seen = seenOf(sid).seenAt;
       return loadComments(classId).filter((c) =>
-        planOwner(c.planKey) === sid && c.author !== sid && !c.reaction && !c.hidden && (!seen || c.createdAt > seen)).length;
+        planOwner(c.planKey) === sid && c.author !== sid && !c.reaction && !c.hidden && (!seen || c.createdAt > seen));
+    }
+    function unreadFor(sid) { return unreadList(sid).length; }
+
+    /** 새 댓글을 단 친구 닉네임(최근 순, 중복 없이) */
+    function unreadFrom(sid) {
+      const out = [];
+      unreadList(sid).slice().reverse().forEach((c) => { if (out.indexOf(c.nickname) === -1) out.push(c.nickname); });
+      return out;
     }
 
     function markSeen() {
@@ -297,14 +310,18 @@
     return {
       publishWeek, unpublishWeek, syncWeek, syncMonth, buildSnapshot, list, snapshotOf,
       comments, counts, addComment, editComment, deleteComment, setHidden, react,
-      unreadFor, markSeen, noticeClosed, closeNotice
+      unreadFor, unreadFrom, markSeen, noticeClosed, closeNotice
     };
   }
 
   SM.createFeed = createFeed;
   SM.feed = Object.assign(createFeed({
     store: SM.store,
-    profile: () => (SM.auth ? SM.auth.current() : null)
+    profile: () => (SM.auth ? SM.auth.current() : null),
+    // 계획 주인의 챗봇 기록에 '○○가 네 계획에 댓글을 남겼어.'
+    notify: (comment, sid) => {
+      if (SM.chat && typeof SM.chat.notify === 'function') SM.chat.notify(SM.chat.josa(comment.nickname, '이', '가') + ' 네 계획에 댓글을 남겼어.', { sid });
+    }
   }), { weekLabel, checkText, classIdOf, planOwner, REACTIONS, MAX_TEXT });
 })(window.SM = window.SM || {});
 
