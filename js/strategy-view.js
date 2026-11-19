@@ -171,9 +171,11 @@
     function addToPlanner(subject, sid) {
       plan.confirmed = true;
       if (SM.planner && typeof SM.planner.addWeeklyStrategy === 'function') {
-        SM.planner.addWeeklyStrategy(subject, sid);
+        const r = SM.planner.addWeeklyStrategy(subject, sid) || {};
         save();
-        SM.ui.toast('이번 주 플래너에 넣었어.');
+        if (r.exists) SM.ui.toast('이미 이번 주 플래너에 있어.');
+        else if (r.full) SM.ui.toast(`이번 주 ${subject} 전략이 벌써 2개야. 주간 플래너에서 바꿔 줘.`);
+        else SM.ui.toast('이번 주 플래너에 넣었어.');
         return;
       }
       plan.plannerQueue = plan.plannerQueue || [];

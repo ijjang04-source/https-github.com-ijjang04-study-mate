@@ -133,7 +133,30 @@
       return ddayFrom(events, today || SM.date.today());
     }
 
-    return { load, save, getWeek, saveWeek, getDay, saveDay, nextDday };
+    /** 이번 주(또는 지정 주)에 과목 전략 연결. 과목당 2개까지 → { added, full, exists } */
+    function addWeeklyStrategy(subject, id, isoWeek) {
+      const w = isoWeek || SM.date.isoWeek(SM.date.today());
+      const week = normalizeWeek(getWeek(w));
+      const r = addStrategyToWeek(week, subject, id);
+      if (r.added) saveWeek(w, week);
+      return r;
+    }
+
+    /** 10단계에서 쌓인 plan.plannerQueue를 이번 주로 옮긴다. 옮긴 개수를 돌려준다. */
+    function drainQueue(planKey, isoWeek) {
+      const plan = store.get(planKey, null);
+      if (!plan || !Array.isArray(plan.plannerQueue) || !plan.plannerQueue.length) return 0;
+      const w = isoWeek || SM.date.isoWeek(SM.date.today());
+      const week = normalizeWeek(getWeek(w));
+      let n = 0;
+      plan.plannerQueue.forEach((q) => { if (addStrategyToWeek(week, q.subject, q.id).added) n++; });
+      saveWeek(w, week);
+      plan.plannerQueue = [];
+      store.set(planKey, plan);
+      return n;
+    }
+
+    return { load, save, getWeek, saveWeek, getDay, saveDay, nextDday, addWeeklyStrategy, drainQueue };
   }
 
   const instance = createPlanner({
@@ -283,9 +306,12 @@
     if (view === 'month') {
       const r = monthView(ctx);
       body = r.node; viewCleanup = r.cleanup;
+    } else if (view === 'week') {
+      const r = weekView(ctx);
+      body = r.node; viewCleanup = r.cleanup;
     } else {
       body = el('div', { class: 'card stack' },
-        el('h3', { text: view === 'week' ? `주간 플래너 · ${cur}` : `일간 플래너 · ${SM.date.formatKorean(cur)}` }),
+        el('h3', { text: `일간 플래너 · ${SM.date.formatKorean(cur)}` }),
         el('p', { class: 'muted', text: '준비 중이에요. 월간 플래너는 지금 쓸 수 있어.' }),
         el('a', { href: '#/planner/month', class: 'btn', text: '월간 플래너 보기' })
       );
@@ -549,10 +575,567 @@
     };
   }
 
+  // =====================================================================
+  // 주간 플래너
+  // weeks[isoWeek] = {
+  //   goals: [{ subject, text }], extraSubjects: [과목],
+  //   strategies: { 과목: [id, id] },           // 과목당 1~2개
+  //   grid: { mon: ['수학:interleave', ...], ... },
+  //   intentions: [{ text, from: 'lastWeek'|'seven'|null }],  // 1~3개
+  //   obstacle: '', public: false, publicRate: false
+  //   (16단계) review.nextChange: '다음 주에 바꿀 한 가지'
+  // }
+  // =====================================================================
+
+  const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const MAX_WEEK_STRATEGIES = 2;
+  const MAX_INTENTIONS = 3;
+  const GOAL_HINTS = {
+    수학: '예) 이차함수 문제 40개',
+    영어: '예) 단어 150개, 지문 10개',
+    국어: '예) 비문학 지문 6개',
+    과학: '예) 화학 2단원 개념 정리',
+    사회: '예) 한국사 연표 1회 정리'
+  };
+  // 자동 나누기 간격(이틀 간격 3일). 원래 요일이 들어 있는 첫 패턴을 쓴다.
+  const SPREAD_PATTERNS = [
+    ['mon', 'wed', 'fri'], ['tue', 'thu', 'sat'], ['wed', 'fri', 'sun'], ['mon', 'thu', 'sun']
+  ];
+
+  function normalizeWeek(w) {
+    const d = w && typeof w === 'object' ? w : {};
+    const grid = {};
+    DAY_KEYS.forEach((k) => { grid[k] = Array.isArray(d.grid && d.grid[k]) ? d.grid[k].slice() : []; });
+    const strategies = {};
+    Object.keys(d.strategies || {}).forEach((s) => {
+      if (Array.isArray(d.strategies[s])) strategies[s] = d.strategies[s].slice(0, MAX_WEEK_STRATEGIES);
+    });
+    return Object.assign({}, d, {
+      goals: Array.isArray(d.goals) ? d.goals.map((g) => ({ subject: g.subject, text: String(g.text || '') })) : [],
+      extraSubjects: Array.isArray(d.extraSubjects) ? d.extraSubjects.slice() : [],
+      strategies,
+      grid,
+      intentions: Array.isArray(d.intentions) ? d.intentions.map((x) => ({ text: String(x.text || ''), from: x.from || null })) : [],
+      obstacle: String(d.obstacle || ''),
+      public: !!d.public,
+      publicRate: !!d.publicRate
+    });
+  }
+
+  /** 과목에 전략 연결(과목당 2개까지). week를 바꾼다. */
+  function addStrategyToWeek(week, subject, id) {
+    const list = week.strategies[subject] = week.strategies[subject] || [];
+    if (list.indexOf(id) !== -1) return { added: false, exists: true, full: false };
+    if (list.length >= MAX_WEEK_STRATEGIES) return { added: false, exists: false, full: true };
+    list.push(id);
+    return { added: true, exists: false, full: false };
+  }
+
+  /** 'mon' 칸에서 그 과목의 전략 id 목록 */
+  function cellEntries(grid, day, subject) {
+    const pre = subject + ':';
+    return ((grid && grid[day]) || []).filter((e) => e.indexOf(pre) === 0).map((e) => e.slice(pre.length));
+  }
+
+  /** 그 과목이 배치된 요일 목록 */
+  function subjectDays(grid, subject) {
+    return DAY_KEYS.filter((d) => cellEntries(grid, d, subject).length > 0);
+  }
+
+  /** 몰림: 목표 분량이 적혀 있는데 배치된 요일이 하루뿐인 과목 → [{ subject, day }] */
+  function clumped(week) {
+    const w = normalizeWeek(week);
+    return w.goals
+      .filter((g) => g.text.trim())
+      .map((g) => ({ subject: g.subject, days: subjectDays(w.grid, g.subject) }))
+      .filter((x) => x.days.length === 1)
+      .map((x) => ({ subject: x.subject, day: x.days[0] }));
+  }
+
+  /** 자동 나누기 제안: 원래 요일을 포함하는 이틀 간격 3일 */
+  function spreadSuggestion(day) {
+    return (SPREAD_PATTERNS.find((p) => p.indexOf(day) !== -1) || SPREAD_PATTERNS[0]).slice();
+  }
+
+  /** 몰린 칸의 전략을 제안 요일들로 옮긴 새 grid(다른 과목은 그대로) */
+  function applySpread(grid, subject) {
+    const days = subjectDays(grid, subject);
+    if (days.length !== 1) return grid;
+    const ids = cellEntries(grid, days[0], subject);
+    const target = spreadSuggestion(days[0]);
+    const out = {};
+    DAY_KEYS.forEach((d) => {
+      const others = ((grid && grid[d]) || []).filter((e) => e.indexOf(subject + ':') !== 0);
+      out[d] = target.indexOf(d) !== -1 ? others.concat(ids.map((id) => `${subject}:${id}`)) : others;
+    });
+    return out;
+  }
+
+  function nextChangeOf(week) {
+    const v = week && week.review && week.review.nextChange;
+    return v ? String(v).trim() : '';
+  }
+
+  function prevWeek(isoWeek) {
+    return SM.date.isoWeek(SM.date.addDays(SM.date.weekDays(isoWeek)[0], -7));
+  }
+
+  /** 지난주 복사: 적용 전략·배치표·실행 의도(목표는 비움) */
+  function copyFromLastWeek(current, last) {
+    const c = normalizeWeek(current);
+    const l = normalizeWeek(last);
+    return Object.assign(c, {
+      goals: c.goals.map((g) => ({ subject: g.subject, text: '' })),
+      extraSubjects: Array.from(new Set(c.extraSubjects.concat(l.extraSubjects))),
+      strategies: JSON.parse(JSON.stringify(l.strategies)),
+      grid: JSON.parse(JSON.stringify(l.grid)),
+      intentions: l.intentions.filter((x) => x.from !== 'lastWeek').map((x) => ({ text: x.text, from: x.from }))
+    });
+  }
+
+  /** 요일별 일간 블록 요약 → [{ day, date, planned, done }] */
+  function blockSummary(isoWeek, getDay) {
+    return SM.date.weekDays(isoWeek).map((iso, i) => {
+      const blocks = getDay(iso) || [];
+      return { day: DAY_KEYS[i], date: iso, planned: blocks.length, done: blocks.filter((b) => b && (b.done === true || b.status === 'done')).length };
+    });
+  }
+
+  /** "나는 저녁 9시가 되면 영단어를 외운다." → "만약 저녁 9시가 되면 영단어를 외운다" */
+  function ruleToIntention(text) {
+    const t = String(text || '').trim().replace(/^나는\s+/, '').replace(/[.。]+$/, '').trim();
+    return t ? '만약 ' + t : '';
+  }
+
+  /** 과목의 전략 선택지: 이달 집중 전략 → 없으면 plan 추천(그 과목 → 전체) */
+  function strategyChoices(monthFocus, plan, subject) {
+    if (monthFocus && monthFocus.length) return monthFocus.slice();
+    const s = plan && plan.strategies;
+    if (!s) return [];
+    if (s[subject] && s[subject].length) return s[subject].slice();
+    const all = [];
+    Object.keys(s).forEach((k) => (s[k] || []).forEach((id) => { if (all.indexOf(id) === -1) all.push(id); }));
+    return all;
+  }
+
+  /** 받침에 따라 '을/를' */
+  function objectJosa(word) {
+    const w = String(word || '');
+    const code = w.charCodeAt(w.length - 1) - 0xac00;
+    if (code < 0 || code > 11171) return w + '을(를)';
+    return w + (code % 28 ? '을' : '를');
+  }
+
+  /** 칸에 쓸 전략 약칭(4자 이내, 서로 다름) */
+  const ABBR = {
+    chunking: '묶기', acronym: '두문자', loci: '장소법', keyword: '핵심단어', automation: '자동화',
+    elaboration: '정교화', elabQuestion: '왜질문', selfExplain: '자기설명', examples: '예시', workedExample: '예제',
+    refutation: '반박', teach: '설명', organize: '조직화', conceptMap: '개념도', dualCoding: '그림+글',
+    imagery: '심상', retrieval: '인출', spacing: '분산', interleave: '교차', pretest: '사전시험',
+    errorLog: '오답', metacog: '메타인지', planDoc: '계획서', ifThen: '실행의도', woop: 'WOOP',
+    timeEnv: '환경', effort: '노력', helpSeek: '질문', havruta: '하브루타', coop: '협동',
+    expressiveWriting: '글쓰기', reciprocal: '상보독해'
+  };
+  function abbr(id) {
+    if (ABBR[id]) return ABBR[id];
+    const name = strategyName(id).replace(/s/g, '');
+    return name.slice(0, 4);
+  }
+
+  // ---------- 칸 선택 시트 ----------
+
+  function openSheet(title, options, selected) {
+    const el = SM.ui.el;
+    return new Promise((resolve) => {
+      const chosen = selected.slice();
+      const prevFocus = document.activeElement;
+      const chips = options.map((o) => el('button', {
+        type: 'button', class: 'chip' + (chosen.indexOf(o.id) !== -1 ? ' chip-on' : ''),
+        'aria-pressed': String(chosen.indexOf(o.id) !== -1), text: o.label,
+        onClick(e) {
+          const at = chosen.indexOf(o.id);
+          if (at === -1) chosen.push(o.id); else chosen.splice(at, 1);
+          e.currentTarget.classList.toggle('chip-on', at === -1);
+          e.currentTarget.setAttribute('aria-pressed', String(at === -1));
+        }
+      }));
+      const backdrop = el('div', { class: 'modal-backdrop' });
+      const box = el('div', { class: 'modal sheet stack', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+        el('h3', { text: title }),
+        options.length
+          ? el('div', { class: 'chip-row', role: 'group', 'aria-label': '전략' }, chips)
+          : el('p', { class: 'muted', text: '먼저 위에서 이 과목의 이번 주 전략을 골라 줘.' }),
+        el('div', { class: 'row' },
+          el('button', { type: 'button', class: 'btn', text: '비우기', onClick: () => close([]) }),
+          el('button', { type: 'button', class: 'btn btn-primary', text: '완료', onClick: () => close(chosen) })
+        )
+      );
+      backdrop.appendChild(box);
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); close(null); }
+        if (e.key === 'Tab') {
+          const f = box.querySelectorAll('button');
+          if (!f.length) return;
+          const first = f[0], last = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+      function close(v) {
+        document.removeEventListener('keydown', onKey, true);
+        backdrop.remove();
+        if (prevFocus && prevFocus.focus) prevFocus.focus();
+        resolve(v);
+      }
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(null); });
+      document.addEventListener('keydown', onKey, true);
+      document.body.appendChild(backdrop);
+      (box.querySelector('.chip') || box.querySelector('.btn-primary')).focus();
+    });
+  }
+
+  // ---------- 화면: 주간 ----------
+
+  function weekView(ctx) {
+    const { cur: wk, today, plan, saved, el } = ctx;
+    const profile = SM.auth.current();
+    const planKey = SM.keys.plan(profile.sid);
+    const moved = instance.drainQueue(planKey, SM.date.isoWeek(today));
+    if (moved) setTimeout(() => SM.ui.toast(`전략 화면에서 넣은 전략 ${moved}개를 이번 주에 연결했어.`), 0);
+
+    let week = normalizeWeek(instance.getWeek(wk));
+    const days = SM.date.weekDays(wk);
+    const short = (iso) => `${+iso.slice(5, 7)}/${+iso.slice(8)}`;
+    const monthFocus = instance.load(monthKeyForWeek(wk)).month.focusStrategies;
+    const result = latestResult();
+
+    // 지난주 '다음 주에 바꿀 한 가지'를 실행 의도 맨 위에(16단계에서 채워짐)
+    const carry = nextChangeOf(instance.getWeek(prevWeek(wk)));
+    if (carry && !week.intentions.some((x) => x.from === 'lastWeek')) {
+      week.intentions.unshift({ text: carry, from: 'lastWeek' });
+      week.intentions = week.intentions.slice(0, MAX_INTENTIONS);
+    }
+
+    let dirty = false;
+    const persist = SM.ui.debounce(() => { instance.saveWeek(wk, week); dirty = false; saved.set('saved'); }, 500);
+    function changed() { dirty = true; saved.set('saving'); persist(); }
+    function flush() { persist.cancel(); instance.saveWeek(wk, week); dirty = false; saved.set('saved'); }
+
+    function subjects() {
+      const base = (result && result.subjects) || [];
+      const list = base.slice();
+      week.extraSubjects.forEach((s) => { if (list.indexOf(s) === -1) list.push(s); });
+      return list;
+    }
+    function syncGoals() {
+      subjects().forEach((s) => { if (!week.goals.some((g) => g.subject === s)) week.goals.push({ subject: s, text: '' }); });
+    }
+    syncGoals();
+
+    const root = el('div', { class: 'stack' });
+    const goalsSec = el('section', { class: 'card stack' });
+    const stratSec = el('section', { class: 'card stack' });
+    const gridSec = el('section', { class: 'card stack' });
+    const spreadBox = el('div', { class: 'stack', 'aria-live': 'polite' });
+    const intentSec = el('section', { class: 'card stack' });
+
+    function renderAll() {
+      renderGoals(); renderStrategies(); renderGrid(); renderSpread(); renderIntentions();
+    }
+
+    // --- 이번 주 목표 ---
+    function renderGoals() {
+      SM.ui.clear(goalsSec);
+      goalsSec.appendChild(el('h3', { text: '이번 주 목표' }));
+      const base = (result && result.subjects) || [];
+      subjects().forEach((s) => {
+        const g = week.goals.find((x) => x.subject === s);
+        const id = 'wgoal-' + s;
+        const input = el('input', {
+          type: 'text', id, maxlength: 60, placeholder: GOAL_HINTS[s] || '예) 문제 20개',
+          onInput(e) { g.text = e.target.value; changed(); renderSpread(); }
+        });
+        input.value = g.text;
+        goalsSec.appendChild(el('div', { class: 'field' },
+          el('label', { for: id, text: s }),
+          el('div', { class: 'row' }, input,
+            base.indexOf(s) === -1
+              ? el('button', {
+                type: 'button', class: 'btn btn-ghost', text: '빼기', 'aria-label': `${s} 빼기`,
+                onClick() {
+                  week.extraSubjects = week.extraSubjects.filter((x) => x !== s);
+                  week.goals = week.goals.filter((x) => x.subject !== s);
+                  flush(); renderAll();
+                }
+              })
+              : null)
+        ));
+      });
+      const rest = SM.config.subjects.filter((s) => subjects().indexOf(s) === -1);
+      if (rest.length) {
+        goalsSec.appendChild(el('details', null,
+          el('summary', { text: '+ 과목 추가' }),
+          el('div', { class: 'chip-row', role: 'group', 'aria-label': '추가할 과목' }, rest.map((s) => el('button', {
+            type: 'button', class: 'chip', text: s,
+            onClick() { week.extraSubjects.push(s); syncGoals(); flush(); renderAll(); const i = document.getElementById('wgoal-' + s); if (i) i.focus(); }
+          })))
+        ));
+      }
+    }
+
+    // --- 이번 주 적용 전략 ---
+    function renderStrategies() {
+      SM.ui.clear(stratSec);
+      stratSec.append(
+        el('h3', { text: '이번 주 적용 전략' }),
+        el('p', { class: 'muted', text: monthFocus.length ? '이달 집중 전략에서 과목마다 1~2개를 골라.' : '추천 전략에서 과목마다 1~2개를 골라.' })
+      );
+      subjects().forEach((s) => {
+        const picked = week.strategies[s] || [];
+        const choices = strategyChoices(monthFocus, plan, s);
+        picked.forEach((id) => { if (choices.indexOf(id) === -1) choices.push(id); });
+        const chip = (id) => {
+          const on = picked.indexOf(id) !== -1;
+          return el('button', {
+            type: 'button', class: 'chip' + (on ? ' chip-on' : ''), 'aria-pressed': String(on), text: strategyName(id),
+            onClick() {
+              if (on) {
+                week.strategies[s] = picked.filter((x) => x !== id);
+                // 배치표에서도 뺀다
+                DAY_KEYS.forEach((d) => { week.grid[d] = week.grid[d].filter((e) => e !== `${s}:${id}`); });
+              } else if (!addStrategyToWeek(week, s, id).added) {
+                SM.ui.toast('과목마다 2개까지 연결할 수 있어.'); return;
+              }
+              flush(); renderStrategies(); renderGrid(); renderSpread();
+            }
+          });
+        };
+        stratSec.appendChild(el('div', { class: 'stack week-subject' },
+          el('h4', { text: `${s} (${picked.length}/2)` }),
+          choices.length ? el('div', { class: 'chip-row', role: 'group', 'aria-label': `${s} 전략` }, choices.map(chip)) : null,
+          el('details', null,
+            el('summary', { text: '기타: 전체 32개에서 고르기' }),
+            el('div', { class: 'chip-row', role: 'group', 'aria-label': `${s} 전체 전략` },
+              SM.data.strategies.filter((x) => choices.indexOf(x.id) === -1).map((x) => chip(x.id)))
+          )
+        ));
+      });
+    }
+
+    // --- 요일별 배치표 ---
+    const mq = window.matchMedia ? window.matchMedia('(max-width: 599px)') : null;
+    let mobileDay = DAY_KEYS[Math.max(0, days.indexOf(today))] || 'mon';
+
+    async function editCell(day, subject) {
+      const options = (week.strategies[subject] || []).map((id) => ({ id, label: strategyName(id) }));
+      const dayIdx = DAY_KEYS.indexOf(day);
+      const res = await openSheet(`${SM.date.WEEKDAY_KO[dayIdx]}요일 · ${subject}`, options, cellEntries(week.grid, day, subject));
+      if (res === null) return;
+      week.grid[day] = week.grid[day].filter((e) => e.indexOf(subject + ':') !== 0).concat(res.map((id) => `${subject}:${id}`));
+      flush(); renderGrid(); renderSpread();
+    }
+
+    function cellButton(day, subject) {
+      const ids = cellEntries(week.grid, day, subject);
+      const dayName = SM.date.WEEKDAY_KO[DAY_KEYS.indexOf(day)];
+      return el('button', {
+        type: 'button', class: 'grid-cell' + (ids.length ? ' grid-on' : ''),
+        'aria-label': `${dayName}요일 ${subject}: ${ids.length ? ids.map(strategyName).join(', ') : '비어 있음'}`,
+        onClick: () => editCell(day, subject)
+      }, ids.length ? ids.map((id) => el('span', { class: 'grid-tag', text: abbr(id) })) : el('span', { class: 'muted', text: '+', 'aria-hidden': 'true' }));
+    }
+
+    function renderGrid() {
+      SM.ui.clear(gridSec);
+      gridSec.append(
+        el('h3', { text: '요일별 배치표' }),
+        el('p', { class: 'muted', text: '칸을 눌러 그날 쓸 전략을 골라.' })
+      );
+      const subs = subjects();
+      if (!subs.length) { gridSec.appendChild(el('p', { class: 'muted', text: '위에서 과목을 먼저 추가해 줘.' })); return; }
+      if (mq && mq.matches) {
+        const tabs = el('div', { class: 'tabs day-tabs', role: 'tablist', 'aria-label': '요일' },
+          DAY_KEYS.map((d, i) => el('button', {
+            type: 'button', class: 'tab', role: 'tab', 'aria-selected': String(d === mobileDay),
+            'aria-label': `${SM.date.WEEKDAY_KO[i]}요일 ${short(days[i])}`,
+            text: SM.date.WEEKDAY_KO[i],
+            onClick() { mobileDay = d; renderGrid(); gridSec.querySelector('[aria-selected="true"]').focus(); }
+          })));
+        const i = DAY_KEYS.indexOf(mobileDay);
+        gridSec.append(tabs,
+          el('p', { class: 'muted', text: `${SM.date.formatKorean(days[i])}` }),
+          el('ul', { class: 'day-list', role: 'tabpanel' }, subs.map((s) => el('li', { class: 'row' },
+            el('span', { class: 'day-subject', text: s }), cellButton(mobileDay, s)))));
+      } else {
+        const head = [el('div', { class: 'grid-head', 'aria-hidden': 'true' })].concat(DAY_KEYS.map((d, i) =>
+          el('div', { class: 'grid-head' + (days[i] === today ? ' grid-today' : ''), 'aria-hidden': 'true' },
+            el('span', { text: SM.date.WEEKDAY_KO[i] }), el('span', { class: 'muted', text: short(days[i]) }))));
+        const rows = [];
+        subs.forEach((s) => {
+          rows.push(el('div', { class: 'grid-subject', text: s }));
+          DAY_KEYS.forEach((d) => rows.push(cellButton(d, s)));
+        });
+        gridSec.appendChild(el('div', { class: 'week-grid' }, head, rows));
+      }
+      gridSec.appendChild(spreadBox);
+    }
+
+    function renderSpread() {
+      SM.ui.clear(spreadBox);
+      clumped(week).forEach((c) => {
+        const names = spreadSuggestion(c.day).map((d) => SM.date.WEEKDAY_KO[DAY_KEYS.indexOf(d)]).join('·');
+        spreadBox.appendChild(el('div', { class: 'notice card stack' },
+          el('p', { text: `💡 ${objectJosa(c.subject)} 하루에 몰아서 하네. 며칠에 나눠 보면 어때?` }),
+          el('button', {
+            type: 'button', class: 'btn', text: `자동으로 나누기 (${names})`,
+            onClick() { week.grid = applySpread(week.grid, c.subject); flush(); renderGrid(); renderSpread(); SM.ui.toast(`${names}로 나눴어.`); }
+          })
+        ));
+      });
+    }
+
+    // --- 실행 의도 ---
+    function renderIntentions() {
+      SM.ui.clear(intentSec);
+      if (!week.intentions.length) week.intentions.push({ text: '', from: null });
+      intentSec.append(
+        el('h3', { text: '실행 의도' }),
+        el('p', { class: 'muted', text: '"만약 [상황]이면 [행동]" 형식으로 1~3개.' })
+      );
+      week.intentions.forEach((it, i) => {
+        const id = 'intent-' + i;
+        const ta = el('input', {
+          type: 'text', id, maxlength: 100, placeholder: '예) 만약 학원에서 늦게 오면 단어 20개만 떠올린다',
+          'aria-label': `실행 의도 ${i + 1}`,
+          onInput(e) { it.text = e.target.value; changed(); }
+        });
+        ta.value = it.text;
+        intentSec.appendChild(el('div', { class: 'stack' },
+          it.from === 'lastWeek' ? el('span', { class: 'tag', text: '지난주에 바꾸기로 한 것' }) : null,
+          el('div', { class: 'row' }, ta,
+            el('button', {
+              type: 'button', class: 'btn btn-ghost', text: '삭제', 'aria-label': `실행 의도 ${i + 1} 삭제`,
+              onClick() { week.intentions.splice(i, 1); flush(); renderIntentions(); }
+            }))
+        ));
+      });
+      const full = week.intentions.length >= MAX_INTENTIONS;
+      const rules = ((plan && plan.sevenRules) || []).filter((r) => r && String(r.text || '').trim());
+      intentSec.appendChild(el('button', {
+        type: 'button', class: 'btn', text: '+ 실행 의도 추가', disabled: full,
+        onClick() { week.intentions.push({ text: '', from: null }); flush(); renderIntentions(); const inputs = intentSec.querySelectorAll('input'); inputs[inputs.length - 1].focus(); }
+      }));
+      intentSec.appendChild(el('details', null,
+        el('summary', { text: '나만의 일곱 가지 전략에서 불러오기' }),
+        rules.length
+          ? el('ul', { class: 'pick-list' }, rules.map((r) => el('li', null, el('button', {
+            type: 'button', class: 'btn btn-ghost pick', text: ruleToIntention(r.text),
+            onClick() {
+              const text = ruleToIntention(r.text);
+              const empty = week.intentions.find((x) => !x.text.trim() && x.from !== 'lastWeek');
+              if (empty) { empty.text = text; empty.from = 'seven'; }
+              else if (week.intentions.length >= MAX_INTENTIONS) { SM.ui.toast('실행 의도는 3개까지야.'); return; }
+              else week.intentions.push({ text, from: 'seven' });
+              flush(); renderIntentions();
+            }
+          }))))
+          : el('p', null, '아직 없어. ', el('a', { href: '#/strategy/seven', text: '만들러 가기' }))
+      ));
+    }
+
+    // --- 예상 장애물 ---
+    const obstacle = el('textarea', {
+      id: 'week-obstacle', rows: 2, maxlength: 200, placeholder: '예) 학원 보강 있는 목요일',
+      onInput(e) { week.obstacle = e.target.value; changed(); }
+    });
+    obstacle.value = week.obstacle;
+
+    // --- 공개 ---
+    const rateBox = el('input', {
+      type: 'checkbox', id: 'week-public-rate', checked: week.publicRate, disabled: !week.public,
+      onChange(e) { week.publicRate = e.target.checked; flush(); }
+    });
+    const pubState = el('strong', { text: week.public ? '켜짐' : '꺼짐' });
+    const pub = el('input', {
+      type: 'checkbox', id: 'week-public', role: 'switch', checked: week.public,
+      onChange(e) {
+        week.public = e.target.checked;
+        if (!week.public) { week.publicRate = false; rateBox.checked = false; }
+        rateBox.disabled = !week.public;
+        pubState.textContent = week.public ? '켜짐' : '꺼짐';
+        flush();
+      }
+    });
+
+    // --- 지난주 복사 ---
+    async function copyLast() {
+      const last = instance.getWeek(prevWeek(wk));
+      const l = normalizeWeek(last);
+      const hasLast = Object.keys(l.strategies).some((s) => l.strategies[s].length) ||
+        DAY_KEYS.some((d) => l.grid[d].length) || l.intentions.some((x) => x.text.trim());
+      if (!hasLast) { SM.ui.toast('지난주에 적은 내용이 없어.'); return; }
+      const hasNow = Object.keys(week.strategies).some((s) => week.strategies[s].length) ||
+        DAY_KEYS.some((d) => week.grid[d].length) || week.intentions.some((x) => x.text.trim() && x.from !== 'lastWeek');
+      if (hasNow) {
+        const ok = await SM.ui.confirmDialog('이번 주에 적은 전략·배치표·실행 의도를 지난주 것으로 바꿀까?', { okText: '바꾸기', cancelText: '그대로 두기' });
+        if (!ok) return;
+      }
+      const keepCarry = week.intentions.filter((x) => x.from === 'lastWeek');
+      week = copyFromLastWeek(week, last);
+      week.intentions = keepCarry.concat(week.intentions).slice(0, MAX_INTENTIONS);
+      syncGoals();
+      flush(); renderAll();
+      SM.ui.toast('지난주 계획을 가져왔어. 목표는 새로 적어 줘.');
+    }
+
+    // --- 일간 블록 요약 ---
+    const summary = blockSummary(wk, instance.getDay);
+    const summarySec = el('section', { class: 'card stack' },
+      el('h3', { text: '이번 주 일간 블록' }),
+      el('ul', { class: 'block-summary' }, summary.map((s, i) => el('li', null,
+        el('a', { href: `#/planner/day?d=${s.date}`, class: 'block-day' + (s.date === today ? ' grid-today' : '') },
+          el('span', { text: `${SM.date.WEEKDAY_KO[i]} ${short(s.date)}` }),
+          el('span', { class: 'muted', text: s.planned ? `${s.done}/${s.planned} 완료` : '계획 없음' }))
+      ))),
+      el('p', { class: 'muted', text: '일간 플래너에서 블록을 만들면 여기에 쌓여.' })
+    );
+
+    function onMedia() { renderGrid(); }
+    if (mq) { if (mq.addEventListener) mq.addEventListener('change', onMedia); else if (mq.addListener) mq.addListener(onMedia); }
+
+    root.append(
+      el('div', { class: 'row' },
+        el('h3', { class: 'month-title grow', text: `${wk} (${short(days[0])}~${short(days[6])})` }),
+        el('button', { type: 'button', class: 'btn', text: '지난주 복사', onClick: copyLast })
+      ),
+      goalsSec, stratSec, gridSec, intentSec,
+      el('section', { class: 'card stack' },
+        el('label', { for: 'week-obstacle' }, el('h3', { text: '예상 장애물' })),
+        obstacle
+      ),
+      el('div', { class: 'card stack' },
+        el('div', { class: 'row toggle-row' }, el('label', { for: 'week-public', text: '이번 주 계획을 우리 반에 공개' }), pub, pubState),
+        el('div', { class: 'row toggle-row' }, el('label', { for: 'week-public-rate', text: '실천률도 공개' }), rateBox)
+      ),
+      summarySec
+    );
+    renderAll();
+
+    return {
+      node: root,
+      cleanup() {
+        if (mq) { if (mq.removeEventListener) mq.removeEventListener('change', onMedia); else if (mq.removeListener) mq.removeListener(onMedia); }
+        if (dirty) flush(); else persist.cancel();
+      }
+    };
+  }
+
   SM.createPlanner = createPlanner;
   SM.planner = Object.assign(instance, {
     monthKeyForWeek, shiftMonth, calendarRows, ddayFrom, normalize, ddayEl, stripEl, query,
-    EVENT_KINDS, EXAM_KINDS
+    EVENT_KINDS, EXAM_KINDS,
+    DAY_KEYS, normalizeWeek, addStrategyToWeek, cellEntries, subjectDays, clumped, spreadSuggestion, applySpread,
+    copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek
   });
 
   if (typeof SM.route === 'function') {
