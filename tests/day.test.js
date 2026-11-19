@@ -111,25 +111,6 @@
     assert.deepEqual(d.checks, [null, null]);
   });
 
-  test('day: SM.metrics.day 하루 요약', () => {
-    const blocks = [
-      { start: '19:00', end: '20:00', strategy: 'interleave', target: { n: 40 }, done: { start: '19:10', end: '20:00', n: 32, applied: 'partial' } },
-      { start: '20:30', end: '21:00', strategy: 'retrieval', target: { n: 20 }, done: { start: '20:30', end: '21:10', n: 20, applied: 'yes' } },
-      { start: '23:30', end: '00:15', strategy: 'spacing', target: { n: 10 } },
-      { start: '', end: '' }
-    ];
-    const m = M.day(blocks);
-    assert.equal(m.count, 4);
-    assert.equal(m.doneCount, 2);
-    assert.equal(m.plannedMinutes, 60 + 30 + 45);
-    assert.equal(m.actualMinutes, 50 + 40);
-    assert.equal(m.completion, 50);
-    assert.equal(m.achievement, 90);
-    assert.equal(m.strategyRate, 75);
-    assert.deepEqual(M.day([]), { count: 0, doneCount: 0, plannedMinutes: 0, actualMinutes: 0, completion: null, achievement: null, strategyRate: null });
-    assert.equal(M.minutes('25:00', '26:00'), 0);
-  });
-
   test('day: 환경 안내 — 추천과 다를 때만', () => {
     const quiet = { place: '조용한 자습실이나 집 책상', with: '혼자' };
     assert.deepEqual(P.envHints(quiet, { place: 'home', with: 'alone' }), []);

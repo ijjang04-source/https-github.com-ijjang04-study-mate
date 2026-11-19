@@ -1,50 +1,3 @@
-// ---------- SM.metrics: 플래너 지표(계산만, DOM 없음). 15단계에서 보강 ----------
-(function (SM) {
-  'use strict';
-
-  const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
-  const APPLIED_SCORE = { yes: 1, partial: 0.5, no: 0 };
-
-  /** 'HH:MM'~'HH:MM' 분(자정을 넘기면 다음 날로). 비어 있거나 잘못되면 0 */
-  function minutes(start, end) {
-    if (!TIME.test(String(start || '')) || !TIME.test(String(end || ''))) return 0;
-    return SM.date.minutesBetween(start, end);
-  }
-
-  /** 블록 달성률(%) = 달성 분량 / 목표 분량, 반올림. 100을 넘을 수 있다. 없으면 null */
-  function achievement(block) {
-    const t = block && block.target ? Number(block.target.n) : NaN;
-    const n = block && block.done ? block.done.n : null;
-    if (!(t > 0) || n === null || n === undefined || n === '' || isNaN(Number(n))) return null;
-    return Math.round(Number(n) / t * 100);
-  }
-
-  const pct = (x) => Math.round(x * 100);
-
-  /**
-   * 하루 지표
-   * → { count, doneCount, plannedMinutes, actualMinutes,
-   *     completion: 완료 블록 비율 %, achievement: 기록한 블록 달성률 평균 %, strategyRate: 전략 적용률 % } (없으면 null)
-   */
-  function day(blocks) {
-    const list = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
-    const done = list.filter((b) => b.done);
-    const rates = done.map(achievement).filter((r) => r !== null);
-    const applied = done.filter((b) => b.strategy && APPLIED_SCORE[b.done.applied] !== undefined);
-    return {
-      count: list.length,
-      doneCount: done.length,
-      plannedMinutes: list.reduce((s, b) => s + minutes(b.start, b.end), 0),
-      actualMinutes: done.reduce((s, b) => s + minutes(b.done.start, b.done.end), 0),
-      completion: list.length ? pct(done.length / list.length) : null,
-      achievement: rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null,
-      strategyRate: applied.length ? pct(applied.reduce((s, b) => s + APPLIED_SCORE[b.done.applied], 0) / applied.length) : null
-    };
-  }
-
-  SM.metrics = Object.assign(SM.metrics || {}, { minutes, achievement, day, APPLIED_SCORE });
-})(window.SM = window.SM || {});
-
 (function (SM) {
   'use strict';
 
@@ -1359,12 +1312,13 @@
     const summaryLine = el('p', { class: 'day-summary', role: 'status' });
     function updateSummary() {
       const m = SM.metrics.day(blocks);
+      const P = (x) => SM.metrics.pct(x, '—');
       const parts = [
-        `계획 ${minutesText(m.plannedMinutes)}`,
-        `실제 ${minutesText(m.actualMinutes)}`,
-        `완료 ${m.doneCount}/${m.count}블록`,
-        m.achievement === null ? '달성률 —' : `달성률 ${m.achievement}%`,
-        m.strategyRate === null ? '전략 적용 —' : `전략 적용 ${m.strategyRate}%`
+        `계획 ${minutesText(m.plannedMin)}`,
+        `실제 ${minutesText(m.actualMin)}`,
+        `완료 ${m.recorded}/${m.planned}블록`,
+        `달성률 ${P(m.amountRate)}`,
+        `전략 적용 ${P(m.strategyRate)}`
       ];
       summaryLine.textContent = parts.join(' · ');
     }
