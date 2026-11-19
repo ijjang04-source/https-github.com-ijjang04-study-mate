@@ -97,6 +97,19 @@
       if (r !== null) byStrategy[id] = r;
     });
 
+    // 과목 × 전략 적용률 { 과목: { id: { rate, n } } }
+    const bySubjectStrategy = {};
+    rec.forEach((b) => {
+      if (!b.strategy || !b.subject || APPLIED_SCORE[b.done.applied] === undefined) return;
+      const s = bySubjectStrategy[b.subject] = bySubjectStrategy[b.subject] || {};
+      const x = s[b.strategy] = s[b.strategy] || { sum: 0, n: 0 };
+      x.sum += APPLIED_SCORE[b.done.applied]; x.n += 1;
+    });
+    Object.keys(bySubjectStrategy).forEach((s) => Object.keys(bySubjectStrategy[s]).forEach((id) => {
+      const x = bySubjectStrategy[s][id];
+      bySubjectStrategy[s][id] = { rate: x.sum / x.n, n: x.n };
+    }));
+
     const counts = {};
     rec.forEach((b) => (b.done.blockers || []).forEach((k) => { counts[k] = (counts[k] || 0) + 1; }));
     const order = (k) => { const i = BLOCKER_ORDER.indexOf(k); return i === -1 ? 99 : i; };
@@ -137,7 +150,7 @@
       isoWeek,
       days: dates.map((iso, i) => Object.assign({ date: iso, day: DAY_KEYS[i] }, day(perDay[i]))),
       total: day(all),
-      byStrategy, blockersTop, focusByPlace, minutesBySubject, clumpBySubject
+      byStrategy, bySubjectStrategy, blockersTop, focusByPlace, minutesBySubject, clumpBySubject
     };
   }
 
@@ -405,12 +418,7 @@
     let cleanup = null;
     if (tab === 'day') body = dayTab();
     else if (tab === 'week') { const r = weekTab(due); body = r.node; cleanup = r.cleanup; }
-    else {
-      body = el('div', { class: 'card stack' },
-        el('h3', { text: '월간 리포트' }),
-        el('p', { class: 'muted', text: '곧 열려. 지금은 일간 탭에서 날마다 기록을 볼 수 있어.' }),
-        el('a', { href: '#/check/day', class: 'btn', text: '일간 보기' }));
-    }
+    else { const r = monthTab(); body = r.node; cleanup = r.cleanup; }
     return {
       node: el('section', { class: 'check stack' }, el('h2', { class: 'visually-hidden', text: '자기 점검' }), tabs, body),
       cleanup: () => { if (cleanup) cleanup(); }
@@ -642,6 +650,8 @@
       const first = !entry.submittedAt;
       entry.submittedAt = entry.submittedAt || new Date().toISOString();
       if (first) entry.editedAt = null;
+      // 재진단 제안용 과목별 추천 전략 적용률 스냅샷
+      entry.subjectRates = SM.recommend.subjectRates(mw, plan);
       persist.cancel();
       entry.updatedAt = new Date().toISOString();
       SM.store.set(key, SM.checkin.upsert(loadCheckins(), entry));
@@ -819,6 +829,278 @@
     renderCalendar(); renderDetail(); renderChart();
     return el('div', { class: 'stack' }, nav, el('section', { class: 'card stack' }, el('h3', { text: '날마다 전략 적용률' }), calBox), detail, chartBox);
   }
+
+  // ---------- 월간 리포트 탭 ----------
+
+  const GOAL_STATUS = [['done', '달성'], ['partial', '부분'], ['missed', '미달성']];
+
+  /** null로 끊긴 구간: [0.5, null, 0.7, 0.8] → [[0], [2, 3]] */
+  function segments(values) {
+    const out = [];
+    let cur = [];
+    (values || []).forEach((v, i) => {
+      if (v === null || v === undefined || isNaN(v)) { if (cur.length) out.push(cur); cur = []; }
+      else cur.push(i);
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  }
+
+  function cssVar(name, fallback) {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (e) { return fallback; }
+  }
+
+  /**
+   * 추이 차트. series: [{ label, values: [0~1|null], color, dash, marker: 'circle'|'square' }]
+   * 축 0~100%, 점 위 숫자, 기록 없는 주는 선을 끊는다.
+   */
+  function drawTrend(canvas, labels, series) {
+    const rect = canvas.getBoundingClientRect();
+    const cssW = Math.max(240, Math.round(rect.width || canvas.parentNode.clientWidth || 320));
+    const cssH = 220;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.height = cssH + 'px';
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const text = cssVar('--text', '#222');
+    const muted = cssVar('--muted', '#666');
+    const line = cssVar('--line', '#ccc');
+    const pad = { l: 40, r: 16, t: 20, b: 28 };
+    const w = cssW - pad.l - pad.r;
+    const h = cssH - pad.t - pad.b;
+    const n = labels.length;
+    const x = (i) => pad.l + (n <= 1 ? w / 2 : (w * i) / (n - 1));
+    const y = (v) => pad.t + h - Math.max(0, Math.min(1, v)) * h;
+
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.lineWidth = 1;
+    // 가로 눈금 0, 50, 100
+    [0, 0.5, 1].forEach((v) => {
+      ctx.strokeStyle = line;
+      ctx.setLineDash(v === 0 ? [] : [2, 3]);
+      ctx.beginPath(); ctx.moveTo(pad.l, y(v)); ctx.lineTo(pad.l + w, y(v)); ctx.stroke();
+      ctx.fillStyle = muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(Math.round(v * 100) + '%', pad.l - 6, y(v));
+    });
+    ctx.setLineDash([]);
+    // x 라벨
+    ctx.fillStyle = muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    labels.forEach((l, i) => ctx.fillText(l, x(i), pad.t + h + 8));
+
+    series.forEach((s, si) => {
+      ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.lineWidth = 2.5;
+      ctx.setLineDash(s.dash || []);
+      segments(s.values).forEach((seg) => {
+        ctx.beginPath();
+        seg.forEach((i, k) => { if (k === 0) ctx.moveTo(x(i), y(s.values[i])); else ctx.lineTo(x(i), y(s.values[i])); });
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+      s.values.forEach((v, i) => {
+        if (v === null || v === undefined) return;
+        const px = x(i), py = y(v);
+        ctx.fillStyle = s.color;
+        if (s.marker === 'square') ctx.fillRect(px - 4, py - 4, 8, 8);
+        else { ctx.beginPath(); ctx.arc(px, py, 4.5, 0, Math.PI * 2); ctx.fill(); }
+        // 숫자: 같은 주에 다른 선의 값이 있으면 높은 쪽은 위, 낮은 쪽은 아래에 써서 겹치지 않게
+        const others = series.filter((o, oi) => oi !== si).map((o) => o.values[i]).filter((o) => o !== null && o !== undefined);
+        const above = !others.length || others.every((o) => v > o || (v === o && si === 0));
+        ctx.fillStyle = text; ctx.textAlign = 'center';
+        ctx.textBaseline = above ? 'bottom' : 'top';
+        ctx.fillText(Math.round(v * 100) + '%', px, above ? py - 7 : py + 7);
+      });
+    });
+  }
+
+  function monthTab() {
+    const el = SM.ui.el;
+    const q = query();
+    const today = SM.date.today();
+    const mk = validMonth(q.m) ? q.m : SM.date.monthKey(today);
+    const [y, mo] = mk.split('-');
+    const weeks = SM.metrics.month(mk);
+    const checkins = loadCheckins();
+    const results = SM.store.get(SM.keys.results(sid()), []) || [];
+    const short = (iso) => `${+iso.slice(5, 7)}/${+iso.slice(8)}`;
+    const wLabels = weeks.map((w, i) => `${i + 1}주`);
+    const wRange = (w) => { const d = SM.date.weekDays(w.isoWeek); return `${short(d[0])}~${short(d[6])}`; };
+    const P = SM.metrics.pct;
+    let cleanups = [];
+
+    function go(m) { location.hash = `#/check/month?m=${m}`; }
+    const nav = el('div', { class: 'planner-nav no-print' },
+      el('button', { type: 'button', class: 'btn', 'aria-label': '이전 달', text: '◀', onClick: () => go(SM.planner.shiftMonth(mk, -1)) }),
+      el('strong', { class: 'grow center', text: `${y}년 ${+mo}월` }),
+      el('button', { type: 'button', class: 'btn', text: '이번 달', onClick: () => go(SM.date.monthKey(today)) }),
+      el('button', { type: 'button', class: 'btn', 'aria-label': '다음 달', text: '▶', onClick: () => go(SM.planner.shiftMonth(mk, 1)) })
+    );
+
+    // --- 재진단 제안 ---
+    const tips = SM.recommend.shouldRetest(results, checkins, new Date());
+    const tipSec = tips.length ? el('section', { class: 'card stack retest-due no-print' },
+      el('h3', { text: '이런 건 어때?' }),
+      tips.map((t) => el('div', { class: 'row' },
+        el('p', { class: 'grow', text: t.text }),
+        el('a', { href: t.go, class: 'btn btn-primary', text: t.type === 'retest' ? '다시 진단하기' : `${t.subject} 전략 보기` })))
+    ) : null;
+
+    // --- 추이 차트 ---
+    const exec = weeks.map((w) => w.total.executionRate);
+    const strat = weeks.map((w) => w.total.strategyRate);
+    const canvas = el('canvas', { class: 'trend-canvas', role: 'img',
+      'aria-label': `주차별 추이. ` + weeks.map((w, i) => `${wLabels[i]}: 계획 이행률 ${P(exec[i])}, 전략 적용률 ${P(strat[i])}`).join('. ') });
+    function draw() {
+      drawTrend(canvas, wLabels, [
+        { label: '계획 이행률', values: exec, color: cssVar('--accent', '#3557d6'), marker: 'circle' },
+        { label: '전략 적용률', values: strat, color: cssVar('--warn', '#c77700'), dash: [6, 4], marker: 'square' }
+      ]);
+    }
+    // 화면에 붙은 뒤 크기를 재서 그린다(rAF가 늦거나 안 오는 환경 대비로 타이머도 함께)
+    const raf = window.requestAnimationFrame ? window.requestAnimationFrame(draw) : 0;
+    const drawTimer = setTimeout(draw, 30);
+    const onResize = SM.ui.debounce(draw, 150);
+    window.addEventListener('resize', onResize);
+    const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    if (mql) { if (mql.addEventListener) mql.addEventListener('change', draw); else if (mql.addListener) mql.addListener(draw); }
+    cleanups.push(() => {
+      if (window.cancelAnimationFrame && raf) window.cancelAnimationFrame(raf);
+      clearTimeout(drawTimer);
+      window.removeEventListener('resize', onResize); onResize.cancel();
+      if (mql) { if (mql.removeEventListener) mql.removeEventListener('change', draw); else if (mql.removeListener) mql.removeListener(draw); }
+    });
+    const chartSec = el('section', { class: 'card stack' },
+      el('h3', { text: '주차별 추이' }),
+      el('ul', { class: 'trend-legend' },
+        el('li', null, el('span', { class: 'legend-line legend-solid', 'aria-hidden': 'true' }), '● 실선: 계획 이행률'),
+        el('li', null, el('span', { class: 'legend-line legend-dash', 'aria-hidden': 'true' }), '■ 점선: 전략 적용률')),
+      canvas,
+      el('p', { class: 'muted', text: '기록이 없는 주는 선이 끊겨. ' + weeks.map((w, i) => `${wLabels[i]} ${wRange(w)}`).join(' · ') })
+    );
+
+    // --- 자기 평가 변화 ---
+    const scoreCell = (w, k) => {
+      const c = SM.checkin.find(checkins, w.isoWeek);
+      const v = c && c.scores ? Number(c.scores[k]) : NaN;
+      return v >= 1 && v <= 5 ? v : null;
+    };
+    const B_SHORT = ['현실적 계획', '하는 법대로', '덮고 떠올리기', '나눠 복습', '보완 습관', '장소·방식', '모르는 것 찾기', '도움 구하기'];
+    const evalSec = el('section', { class: 'card stack' },
+      el('h3', { text: '자기 평가 변화 (5점)' }),
+      el('div', { class: 'table-wrap' },
+        el('table', { class: 'mini-table' },
+          el('thead', null, el('tr', null, el('th', { scope: 'col', text: '문항' }), wLabels.map((l) => el('th', { scope: 'col', text: l })), el('th', { scope: 'col', text: '평균' }))),
+          el('tbody', null, B_ITEMS.map(([k], i) => {
+            const vals = weeks.map((w) => scoreCell(w, k));
+            const got = vals.filter((v) => v !== null);
+            return el('tr', null,
+              el('th', { scope: 'row', text: `${i + 1}. ${B_SHORT[i]}` }),
+              vals.map((v) => el('td', { text: v === null ? '—' : String(v) })),
+              el('td', { class: 'strong', text: got.length ? (got.reduce((a, b) => a + b, 0) / got.length).toFixed(1) : '—' }));
+          }))
+        )
+      ),
+      el('p', { class: 'muted', text: '— 는 그 주 점검표가 없다는 뜻이야.' })
+    );
+
+    // --- 전략별 효과 스스로 보기 ---
+    const pairs = [];
+    weeks.forEach((w) => Object.keys(w.bySubjectStrategy || {}).forEach((s) => Object.keys(w.bySubjectStrategy[s]).forEach((id) => {
+      if (!pairs.some((p) => p.s === s && p.id === id)) pairs.push({ s, id });
+    })));
+    const effectSec = el('section', { class: 'card stack' },
+      el('h3', { text: '전략별 효과 스스로 보기' }),
+      el('p', { text: '이 전략을 많이 쓴 주에 정답률이 어땠는지 보자. 다른 이유도 있을 수 있으니 참고만 해.' }),
+      pairs.length ? el('div', { class: 'table-wrap' },
+        el('table', { class: 'mini-table' },
+          el('thead', null, el('tr', null, el('th', { scope: 'col', text: '과목 · 전략' }), wLabels.map((l) => el('th', { scope: 'col', text: l })))),
+          el('tbody', null, pairs.map((p) => el('tr', null,
+            el('th', { scope: 'row', text: `${p.s} · ${strategyName(p.id)}` }),
+            weeks.map((w) => {
+              const x = w.bySubjectStrategy && w.bySubjectStrategy[p.s] && w.bySubjectStrategy[p.s][p.id];
+              const c = SM.checkin.find(checkins, w.isoWeek);
+              const score = c && c.results && typeof c.results[p.s] === 'number' ? c.results[p.s] : null;
+              return el('td', null,
+                el('span', { class: 'cell-line', text: `적용 ${x ? P(x.rate) : '—'}` }),
+                el('span', { class: 'cell-line muted', text: `정답 ${score === null ? '—' : score + '%'}` }));
+            }))))
+        )
+      ) : el('p', { class: 'muted', text: '이 달에 전략을 쓴 기록이 아직 없어.' })
+    );
+
+    // --- 월간 목표 점검(플래너 월 데이터에 저장) ---
+    const data = SM.planner.load(mk);
+    const goals = (data.month.goals || []).map((g) => String(g || '').trim()).filter(Boolean);
+    const review = Array.isArray(data.month.goalReview) ? data.month.goalReview : [];
+    const rows = goals.map((g) => Object.assign({ text: g, status: null, memo: '' }, review.find((r) => r && r.text === g) || {}));
+    const indicator = SM.ui.savedIndicator();
+    let dirty = false;
+    function writeGoals() {
+      const d = SM.planner.load(mk);
+      d.month.goalReview = rows.map((r) => ({ text: r.text, status: r.status, memo: r.memo }));
+      SM.planner.save(mk, d);
+      dirty = false; indicator.set('saved');
+    }
+    const persist = SM.ui.debounce(writeGoals, 500);
+    cleanups.push(() => { if (dirty) { persist.cancel(); writeGoals(); } else persist.cancel(); });
+    const goalSec = el('section', { class: 'card stack' },
+      el('div', { class: 'row' }, el('h3', { class: 'grow', text: '월간 목표 점검' }), indicator.node),
+      rows.length ? rows.map((r, i) => {
+        const group = el('div', { class: 'chip-row', role: 'group', 'aria-label': `목표 ${i + 1} 결과` });
+        function paint() {
+          SM.ui.clear(group);
+          GOAL_STATUS.forEach(([v, label], j) => group.appendChild(el('button', {
+            type: 'button', class: 'chip' + (r.status === v ? ' chip-on' : ''), 'aria-pressed': String(r.status === v), text: label,
+            onClick() { r.status = r.status === v ? null : v; dirty = true; indicator.set('saving'); persist(); paint(); group.children[j].focus(); }
+          })));
+        }
+        paint();
+        const memo = el('input', { type: 'text', maxlength: 60, 'aria-label': `목표 ${i + 1} 메모`, placeholder: '한 줄 메모',
+          onInput(e) { r.memo = e.target.value; dirty = true; indicator.set('saving'); persist(); } });
+        memo.value = r.memo || '';
+        return el('div', { class: 'stack scale-item' }, el('p', { text: `${i + 1}. ${r.text}` }), group, memo);
+      }) : el('p', null, '이 달 목표가 없어. ', el('a', { href: `#/planner/month?m=${mk}`, text: '월간 플래너에서 적기' }))
+    );
+
+    // --- 내보내기 ---
+    function exportJson() {
+      const weekKeys = weeks.map((w) => w.isoWeek);
+      const payload = {
+        app: 'study-mate', kind: 'month-report', month: mk, exportedAt: new Date().toISOString(),
+        planner: SM.planner.load(mk),
+        checkins: checkins.filter((c) => weekKeys.indexOf(c.isoWeek) !== -1)
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = el('a', { href: url, download: `study-mate-${mk}.json` });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      SM.ui.toast('JSON 파일로 저장했어.');
+    }
+    const exportSec = el('div', { class: 'row no-print' },
+      el('button', { type: 'button', class: 'btn', text: '인쇄하기', onClick: () => window.print() }),
+      el('button', { type: 'button', class: 'btn', text: 'JSON으로 저장', onClick: exportJson })
+    );
+
+    return {
+      node: el('div', { class: 'stack report' },
+        nav,
+        el('h3', { class: 'print-only', text: `공부 메이트 월간 리포트 · ${y}년 ${+mo}월` }),
+        tipSec, chartSec, evalSec, effectSec, goalSec, exportSec),
+      cleanup() { cleanups.forEach((f) => f()); cleanups = []; }
+    };
+  }
+
+  SM.checkin.segments = segments;
 
   if (typeof SM.route === 'function') {
     SM.route('#/check', { title: '자기 점검', tab: 'check', render: () => checkScreen({ tab: 'day' }) });

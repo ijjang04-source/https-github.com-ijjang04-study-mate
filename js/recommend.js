@@ -308,9 +308,75 @@
     return { ok: true, missing: null, empty: false };
   }
 
+  // ---------- 재진단 제안 ----------
+
+  const RETEST_DAYS = 28;
+  const LOW_RATE = 0.3;
+
+  /**
+   * 과목별 '추천 전략' 적용률(0~1). metricsWeek.bySubjectStrategy와 plan.strategies로 계산.
+   * 추천 전략을 쓴 기록이 없으면 그 과목은 null.
+   */
+  function subjectRates(metricsWeek, plan) {
+    const out = {};
+    const bss = (metricsWeek && metricsWeek.bySubjectStrategy) || {};
+    const ps = (plan && plan.strategies) || {};
+    Object.keys(ps).forEach((subject) => {
+      let sum = 0, n = 0;
+      (ps[subject] || []).forEach((id) => {
+        const x = bss[subject] && bss[subject][id];
+        if (x && x.n) { sum += x.rate * x.n; n += x.n; }
+      });
+      out[subject] = n ? sum / n : null;
+    });
+    return out;
+  }
+
+  function nextIsoWeek(w) {
+    return SM.date.isoWeek(SM.date.addDays(SM.date.weekDays(w)[0], 7));
+  }
+
+  /**
+   * 재진단·전략 바꾸기 제안
+   * - 마지막 검사 후 28일 이상 → { type: 'retest', go: '#/test' }
+   * - 어떤 과목 추천 전략 적용률이 (점검표 기준) 2주 연속 30% 미만 → { type: 'strategy', subject, go: '#/strategy?s=과목' }
+   *   checkins[i].subjectRates = { 과목: 0~1|null } (점검표 제출 때 저장)
+   * → 제안 배열(없으면 [])
+   */
+  function shouldRetest(results, checkins, now) {
+    const out = [];
+    const today = SM.date.today(now instanceof Date ? now : (typeof now === 'number' ? new Date(now) : undefined));
+    const last = Array.isArray(results) && results.length ? results[results.length - 1] : null;
+    if (last && last.takenAt) {
+      const days = SM.date.daysBetween(last.takenAt, today);
+      if (days >= RETEST_DAYS) {
+        out.push({ type: 'retest', days, go: '#/test', text: '내 스타일을 다시 확인해 볼까?' });
+      }
+    }
+
+    const list = (Array.isArray(checkins) ? checkins : [])
+      .filter((c) => c && c.isoWeek && c.subjectRates)
+      .slice()
+      .sort((a, b) => (a.isoWeek < b.isoWeek ? -1 : a.isoWeek > b.isoWeek ? 1 : 0));
+    const subjects = [];
+    list.forEach((c) => Object.keys(c.subjectRates).forEach((s) => { if (subjects.indexOf(s) === -1) subjects.push(s); }));
+    subjects.forEach((s) => {
+      // 그 과목 적용률이 있는 최근 두 주가 연속된 주이고 둘 다 30% 미만
+      const withRate = list.filter((c) => typeof c.subjectRates[s] === 'number');
+      if (withRate.length < 2) return;
+      const a = withRate[withRate.length - 2], b = withRate[withRate.length - 1];
+      if (nextIsoWeek(a.isoWeek) !== b.isoWeek) return;
+      if (a.subjectRates[s] < LOW_RATE && b.subjectRates[s] < LOW_RATE) {
+        out.push({ type: 'strategy', subject: s, go: `#/strategy?s=${encodeURIComponent(s)}`, text: `${s} 전략이 2주 동안 잘 안 붙었어. 다른 전략으로 바꿔 볼까?` });
+      }
+    });
+    return out;
+  }
+
   SM.recommend = {
     forSubject, rank, explain, alternative, habits, environment, cardPole,
     weaknessMatch, styleFit, poleLean, candidates, CORE,
-    sevenPool, sevenDrafts, nextDraft, checkRule
+    sevenPool, sevenDrafts, nextDraft, checkRule,
+    subjectRates, shouldRetest, RETEST_DAYS
   };
 })(window.SM = window.SM || {});

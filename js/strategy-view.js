@@ -87,7 +87,11 @@
     });
 
     const root = el('div', { class: 'stack strategy' });
-    let active = subjects[0];
+    // #/strategy?s=수학 이면 그 과목 탭부터
+    const qs = /[?&]s=([^&]+)/.exec(String(location.hash || ''));
+    let wanted = null;
+    try { wanted = qs ? decodeURIComponent(qs[1]) : null; } catch (e) { wanted = null; }
+    let active = subjects.indexOf(wanted) !== -1 ? wanted : subjects[0];
 
     // ---------- 카드 ----------
 
