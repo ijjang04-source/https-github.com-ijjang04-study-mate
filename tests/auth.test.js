@@ -64,9 +64,18 @@
     assert.equal((await SM.auth.verifyCode('0000', SHA_5678)).ok, false);
   });
 
-  test('auth: config의 DEMO 1-1 코드 1234가 맞다', async () => {
+  // 개발 중(DEMO 있음): 체험 코드 1234로 입장된다.
+  // 배포 설정(DEMO 지움): 어느 반도 체험 코드 1234를 받지 않는다(체험 해시를 실수로 남기지 않았는지).
+  test('auth: DEMO 1-1 체험 코드 1234 — DEMO가 있으면 입장, 지웠으면 어느 반도 1234 거부', async () => {
     const entry = SM.config.classes.find((c) => c.school === 'DEMO' && c.grade === 1 && c.cls === 1);
-    assert.equal((await SM.auth.verifyCode('1234', entry.codeHash)).ok, true);
+    if (entry) {
+      assert.equal((await SM.auth.verifyCode('1234', entry.codeHash)).ok, true);
+      return;
+    }
+    assert.ok(!SM.config.schools.some((x) => x.id === 'DEMO'), 'DEMO 반을 지웠으면 DEMO 학교도 지운다');
+    for (const c of SM.config.classes) {
+      assert.equal((await SM.auth.verifyCode('1234', c.codeHash)).ok, false, `${c.school} ${c.grade}-${c.cls}가 체험 코드 1234를 받음`);
+    }
   });
 
   // ---------- 검증 실패 ----------
