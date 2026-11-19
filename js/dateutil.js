@@ -86,6 +86,11 @@
     return (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일 (' + WEEKDAY_KO[weekday(iso)] + ')';
   }
 
+  /** a에서 b까지 며칠(b가 앞이면 음수) */
+  function daysBetween(a, b) {
+    return Math.round((parse(b).getTime() - parse(a).getTime()) / DAY_MS);
+  }
+
   function toMinutes(hhmm) {
     const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm));
     if (!m || +m[1] > 23 || +m[2] > 59) throw new Error('잘못된 시각 형식: ' + hhmm);
@@ -101,6 +106,6 @@
 
   SM.date = {
     today, addDays, isoWeek, weekDays, monthKey, monthDays,
-    weekday, formatKorean, minutesBetween, WEEKDAY_KO
+    weekday, formatKorean, minutesBetween, daysBetween, WEEKDAY_KO
   };
 })(window.SM = window.SM || {});

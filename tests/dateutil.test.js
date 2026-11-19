@@ -88,6 +88,13 @@
     assert.equal(D.minutesBetween('10:00', '10:00'), 0);
   });
 
+  test('daysBetween: 월·연 경계, 음수', () => {
+    assert.equal(D.daysBetween('2026-11-13', '2026-12-11'), 28);
+    assert.equal(D.daysBetween('2026-12-31', '2027-01-01'), 1);
+    assert.equal(D.daysBetween('2026-11-13', '2026-11-13'), 0);
+    assert.equal(D.daysBetween('2026-11-13', '2026-11-10'), -3);
+  });
+
   test('today: 로컬 시간 기준 YYYY-MM-DD', () => {
     assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(D.today()));
     assert.equal(D.today(new Date(2026, 10, 13, 23, 59)), '2026-11-13');

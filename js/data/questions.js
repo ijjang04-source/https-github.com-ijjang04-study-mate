@@ -29,12 +29,12 @@
     {
       id: 'fieldDep', area: 1, set: 'basic', format: 'likert',
       left: {
-        key: 'dependent', name: '장 의존형', lean: '주변 분위기와 함께할 때 힘이 나는 편',
+        key: 'dependent', name: '장 의존형', phrase: '친구들과 함께', lean: '주변 분위기와 함께할 때 힘이 나는 편',
         desc: '맥락과 사람들의 반응을 함께 보며 배우고, 함께하는 열린 공간에서 의욕이 커져.',
         studyTip: '스터디 친구와 목표를 나누고, 배운 내용을 실제 상황과 연결해 봐.'
       },
       right: {
-        key: 'independent', name: '장 독립형', lean: '혼자 핵심을 골라내는 편',
+        key: 'independent', name: '장 독립형', phrase: '혼자 조용히', lean: '혼자 핵심을 골라내는 편',
         desc: '맥락에서 필요한 정보만 떼어 분석하고, 스스로 정한 목표로 움직여.',
         studyTip: '조용한 자리에서 스스로 목표를 세우고, 가끔 남에게 설명하며 빈틈을 확인해.'
       }
@@ -42,12 +42,12 @@
     {
       id: 'tempo', area: 1, set: 'basic', format: 'likert',
       left: {
-        key: 'impulsive', name: '충동형', lean: '빨리 결정하고 움직이는 편',
+        key: 'impulsive', name: '충동형', phrase: '빠르게 감을 잡으며', lean: '빨리 결정하고 움직이는 편',
         desc: '판단이 빠르고 속도가 장점이지만, 서두르다 실수가 생길 수 있어.',
         studyTip: '답을 고른 뒤 3초 멈추고 조건을 한 번 더 확인하는 습관을 붙여 봐.'
       },
       right: {
-        key: 'reflective', name: '반성형', lean: '천천히 따져 보고 정확히 고르는 편',
+        key: 'reflective', name: '반성형', phrase: '천천히 꼼꼼하게 따지며', lean: '천천히 따져 보고 정확히 고르는 편',
         desc: '보기를 끝까지 살펴서 정확하지만, 시간이 부족해질 수 있어.',
         studyTip: '문제마다 목표 시간을 정해 두고 시간 안에 푸는 연습을 해 봐.'
       }
@@ -55,12 +55,12 @@
     {
       id: 'perception', area: 1, set: 'basic', format: 'likert',
       left: {
-        key: 'sensing', name: '감각형', lean: '사실과 절차로 배우는 편',
+        key: 'sensing', name: '감각형', phrase: '사실과 절차를 차근차근 따라가며', lean: '사실과 절차로 배우는 편',
         desc: '구체적인 사실, 데이터, 정해진 절차를 따라가며 확실하게 익혀.',
         studyTip: '개념을 배울 때 "왜?"를 한 줄 덧붙여 원리까지 정리해 봐.'
       },
       right: {
-        key: 'intuitive', name: '직관형', lean: '원리와 가능성을 찾는 편',
+        key: 'intuitive', name: '직관형', phrase: '원리와 이유를 찾으며', lean: '원리와 가능성을 찾는 편',
         desc: '아이디어와 원리, 새로운 연결에 끌리고 반복 연습은 지루해할 수 있어.',
         studyTip: '원리를 이해한 뒤 계산·암기 문제를 정해진 양만큼 꼭 반복해.'
       }
@@ -68,12 +68,12 @@
     {
       id: 'reasoning', area: 1, set: 'basic', format: 'forced',
       left: {
-        key: 'inductive', name: '귀납형', lean: '예시를 먼저 보고 규칙을 찾는 편',
+        key: 'inductive', name: '귀납형', phrase: '예제부터 풀어 보며', lean: '예시를 먼저 보고 규칙을 찾는 편',
         desc: '여러 예제를 풀어 보며 공통 규칙을 스스로 찾아낼 때 잘 이해돼.',
         studyTip: '예제를 먼저 풀고, 찾은 규칙을 개념 설명과 맞춰 확인해.'
       },
       right: {
-        key: 'deductive', name: '연역형', lean: '개념을 먼저 알고 예시에 적용하는 편',
+        key: 'deductive', name: '연역형', phrase: '개념부터 잡고', lean: '개념을 먼저 알고 예시에 적용하는 편',
         desc: '원리와 정의를 먼저 잡은 뒤 예제에 적용할 때 잘 이해돼.',
         studyTip: '개념을 정리한 뒤 바로 유형별 예제에 적용해 봐.'
       }
@@ -81,12 +81,12 @@
     {
       id: 'processing', area: 1, set: 'basic', format: 'forced',
       left: {
-        key: 'active', name: '능동형', lean: '해 보고 말하면서 익히는 편',
+        key: 'active', name: '능동형', phrase: '직접 해 보고 말하며', lean: '해 보고 말하면서 익히는 편',
         desc: '직접 해 보거나 다른 사람과 이야기하면서 생각이 정리돼.',
         studyTip: '배운 걸 친구에게 설명하거나 바로 문제에 적용해 봐.'
       },
       right: {
-        key: 'reflective', name: '성찰형', lean: '혼자 곰곰이 생각하며 익히는 편',
+        key: 'reflective', name: '성찰형', phrase: '혼자 곰곰이 생각하며', lean: '혼자 곰곰이 생각하며 익히는 편',
         desc: '혼자 충분히 생각하고 정리할 시간이 있을 때 깊이 이해돼.',
         studyTip: '공부 중간에 멈추고 핵심을 세 줄로 요약하는 시간을 둬.'
       }
@@ -96,12 +96,12 @@
     {
       id: 'input', area: 2, set: 'basic', format: 'forced',
       left: {
-        key: 'visual', name: '시각형', lean: '그림과 도표로 받아들이는 편',
+        key: 'visual', name: '시각형', phrase: '그림으로 정리하며', lean: '그림과 도표로 받아들이는 편',
         desc: '그림, 도표, 색, 공간 배치로 볼 때 오래 기억해.',
         studyTip: '개념을 도식·마인드맵으로 바꾸고 색으로 구분해 봐.'
       },
       right: {
-        key: 'verbal', name: '언어형', lean: '글과 말로 받아들이는 편',
+        key: 'verbal', name: '언어형', phrase: '글과 말로 정리하며', lean: '글과 말로 받아들이는 편',
         desc: '글로 읽거나 말로 들은 설명을 잘 기억해.',
         studyTip: '핵심을 문장으로 요약하고 소리 내어 설명해 봐.'
       }
@@ -121,12 +121,12 @@
     {
       id: 'order', area: 3, set: 'basic', format: 'likert',
       left: {
-        key: 'sequential', name: '순차형', lean: '한 단계씩 차근차근 가는 편',
+        key: 'sequential', name: '순차형', phrase: '한 단계씩 차근차근', lean: '한 단계씩 차근차근 가는 편',
         desc: '앞 단계를 확실히 이해하고 다음으로 넘어갈 때 마음이 편해.',
         studyTip: '단원을 시작할 때 목차를 한 번 훑어 전체 그림도 같이 잡아 봐.'
       },
       right: {
-        key: 'global', name: '총체형', lean: '큰 그림을 먼저 보는 편',
+        key: 'global', name: '총체형', phrase: '큰 그림부터 보며', lean: '큰 그림을 먼저 보는 편',
         desc: '전체 흐름을 먼저 잡으면 세부 내용이 한 번에 연결돼.',
         studyTip: '큰 그림을 잡은 뒤 빠진 단계가 없는지 순서대로 점검해.'
       },
@@ -135,12 +135,12 @@
     {
       id: 'kolbPerceive', area: 3, set: 'basic', format: 'likert',
       left: {
-        key: 'concrete', name: '구체적 경험', lean: '직접 겪어 보며 와닿는 편',
+        key: 'concrete', name: '구체적 경험', phrase: '직접 겪어 보며', lean: '직접 겪어 보며 와닿는 편',
         desc: '경험과 느낌이 있어야 내용이 실감 나.',
         studyTip: '개념마다 내 생활 속 예를 하나씩 찾아 붙여 봐.'
       },
       right: {
-        key: 'abstract', name: '추상적 개념', lean: '논리와 개념으로 이해하는 편',
+        key: 'abstract', name: '추상적 개념', phrase: '논리로 따져 보며', lean: '논리와 개념으로 이해하는 편',
         desc: '논리로 따지고 개념으로 정리할 때 이해가 깊어져.',
         studyTip: '개념을 정리한 뒤 구체적인 예시로 한 번 더 확인해.'
       },
@@ -149,12 +149,12 @@
     {
       id: 'kolbProcess', area: 3, set: 'basic', format: 'likert',
       left: {
-        key: 'observe', name: '성찰적 관찰', lean: '지켜보고 생각한 뒤 움직이는 편',
+        key: 'observe', name: '성찰적 관찰', phrase: '지켜보고 생각한 뒤', lean: '지켜보고 생각한 뒤 움직이는 편',
         desc: '충분히 관찰하고 생각한 다음에 적용하는 걸 좋아해.',
         studyTip: '생각을 정리했다면 작은 문제부터 바로 적용해 봐.'
       },
       right: {
-        key: 'experiment', name: '능동적 실험', lean: '바로 써 보며 확인하는 편',
+        key: 'experiment', name: '능동적 실험', phrase: '바로 써 보며', lean: '바로 써 보며 확인하는 편',
         desc: '배운 걸 곧장 적용해 보면서 확인하는 걸 좋아해.',
         studyTip: '적용한 뒤 무엇이 됐고 안 됐는지 한 줄씩 돌아봐.'
       },
@@ -184,12 +184,12 @@
     {
       id: 'chrono', area: 5, set: 'deep', format: 'forced',
       left: {
-        key: 'morning', name: '아침형', lean: '아침·오전에 집중이 잘 되는 편',
+        key: 'morning', name: '아침형', phrase: '아침·오전에', lean: '아침·오전에 집중이 잘 되는 편',
         desc: '하루 앞쪽에 머리가 맑아.',
         studyTip: '어려운 과목을 오전이나 등교 전 시간에 배치해 봐.'
       },
       right: {
-        key: 'evening', name: '저녁형', lean: '저녁·밤에 집중이 잘 되는 편',
+        key: 'evening', name: '저녁형', phrase: '저녁·밤에', lean: '저녁·밤에 집중이 잘 되는 편',
         desc: '하루 뒤쪽으로 갈수록 집중이 살아나.',
         studyTip: '어려운 과목은 저녁에 두되, 잠자는 시간은 일정하게 지켜.'
       }
@@ -328,27 +328,27 @@
     ]
   };
 
-  // 학생에게 보여 줄 한 문장(능력 판단이 아니라 '다음에 할 일'로 쓴다)
+  // 학생에게 보여 줄 한 문장: "수학 — 문제를 보고 풀이법을 고르는 것이 어려움" 형식(자기 보고를 그대로 옮긴다).
   SM.data.weaknessLabels = {
-    MATH_SELECT: '문제를 보고 풀이법을 고르는 연습이 필요해.',
-    MATH_PROCESS: '풀이 과정을 한 단계씩 따라가는 연습이 필요해.',
-    MATH_BASIC: '기초 연산과 공식을 다지는 시간이 필요해.',
-    MATH_CARELESS: '아는 문제를 실수 없이 마무리하는 습관이 필요해.',
-    ENG_VOCAB: '단어를 오래 기억하는 복습 방법이 필요해.',
-    ENG_CONFUSE: '비슷한 단어를 구별하는 정리가 필요해.',
-    ENG_GRAMMAR: '문법 규칙을 문장에 적용하는 연습이 필요해.',
-    ENG_READING: '지문의 요지를 잡는 읽기 연습이 필요해.',
-    KOR_STRUCTURE: '비문학 지문의 구조를 잡는 연습이 필요해.',
-    KOR_APPLY: '문학 개념어를 작품에 적용하는 연습이 필요해.',
-    KOR_MEMORIZE: '문법·어법을 나눠서 외우는 계획이 필요해.',
-    KOR_ILLUSION: '이해했는지 스스로 확인하는 습관이 필요해.',
-    SCI_RELATION: '개념 사이의 관계를 정리하는 시간이 필요해.',
-    SCI_MISCONCEPT: '평소 생각과 과학 개념을 비교해 보는 시간이 필요해.',
-    SCI_TERMS: '용어와 기호를 꾸준히 익히는 복습이 필요해.',
-    SCI_APPLY: '개념을 실험·계산 문제에 적용하는 연습이 필요해.',
-    SOC_RECALL: '외운 내용을 꺼내 보는 인출 연습이 필요해.',
-    SOC_ORDER: '사건을 시간 순서로 엮는 정리가 필요해.',
-    SOC_CAUSAL: '원인과 결과를 비교하는 정리가 필요해.',
-    ANY_ANXIETY: '시험 긴장을 다루는 준비가 필요해.'
+    MATH_SELECT: '문제를 보고 풀이법을 고르는 것이 어려움',
+    MATH_PROCESS: '풀이 과정을 한 단계씩 따라가는 것이 어려움',
+    MATH_BASIC: '기초 연산과 공식에서 자주 막힘',
+    MATH_CARELESS: '아는 문제를 실수로 틀리는 일이 잦음',
+    ENG_VOCAB: '외운 단어를 오래 기억하는 것이 어려움',
+    ENG_CONFUSE: '철자·발음이 비슷한 단어를 구별하는 것이 어려움',
+    ENG_GRAMMAR: '문법 규칙을 문장에 적용하는 것이 어려움',
+    ENG_READING: '지문의 요지를 잡는 것이 어려움',
+    KOR_STRUCTURE: '비문학 지문의 구조와 요지를 파악하는 것이 어려움',
+    KOR_APPLY: '문학 개념어를 작품에 적용하는 것이 어려움',
+    KOR_MEMORIZE: '문법·어법의 암기량이 부담스러움',
+    KOR_ILLUSION: '읽고 나면 이해했다고 착각하기 쉬움',
+    SCI_RELATION: '개념 사이의 관계가 헷갈림',
+    SCI_MISCONCEPT: '일상적인 생각과 다른 과학 개념을 받아들이는 것이 어려움',
+    SCI_TERMS: '과학 용어와 기호를 외우는 것이 어려움',
+    SCI_APPLY: '개념을 실험·계산 문제에 적용하는 것이 어려움',
+    SOC_RECALL: '외울 것이 많아 시험 때 떠올리는 것이 어려움',
+    SOC_ORDER: '시대·사건 순서가 자주 뒤섞임',
+    SOC_CAUSAL: '사건·제도의 원인과 결과를 비교하는 것이 어려움',
+    ANY_ANXIETY: '시험 때 긴장해서 아는 것도 틀리기 쉬움'
   };
 })(window.SM = window.SM || {});

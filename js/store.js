@@ -13,6 +13,7 @@
     session: () => 'session',
     profile: (sid) => `profile:${sid}`,
     testProgress: (sid) => `test-progress:${sid}`,
+    testProgressDeep: (sid) => `test-progress:${sid}:deep`,
     results: (sid) => `results:${sid}`,
     plan: (sid) => `plan:${sid}`,
     planner: (sid, monthKey) => `planner:${sid}:${monthKey}`,
