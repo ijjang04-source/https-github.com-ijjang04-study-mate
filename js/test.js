@@ -181,10 +181,55 @@
     return `너는 ${picks.join(', ')} 공부할 때 편한 편이야.`;
   }
 
+  /**
+   * 결과에서 추천에 쓸 스타일 극 목록(balanced 제외).
+   * → [{ key: 'fieldDep:R', band: 'mild'|'strong' }]
+   *  - 양극 차원(SPECTRUM_DIMS): 점수 부호로 L/R, band는 점수로.
+   *  - vark: 선호 채널마다. 선호가 하나뿐이면 strong, 여럿이면 mild.
+   *  - kolb: type이 balanced가 아니면, 두 축 중 |점수|가 큰 쪽으로 band.
+   *  - approach:surface: 심화 결과에서 surface ≥ 60이고 deep보다 높을 때(75 이상 strong).
+   *  - goal:avoid: masteryAvoid 또는 performanceAvoid가 4 이상(5면 strong).
+   *  - chrono: morning/evening이면 chronoScore로 band.
+   */
+  function poles(result) {
+    const out = [];
+    if (!result) return out;
+    const styles = result.styles || {};
+    SPECTRUM_DIMS.forEach((id) => {
+      const s = styles[id];
+      const b = band(s);
+      if (b === 'mild' || b === 'strong') out.push({ key: `${id}:${s < 0 ? 'L' : 'R'}`, band: b });
+    });
+    const pref = (result.vark && result.vark.preferred) || [];
+    pref.forEach((k) => out.push({ key: `vark:${k}`, band: pref.length === 1 ? 'strong' : 'mild' }));
+
+    const k = result.kolb || {};
+    if (k.type && k.type !== 'balanced') {
+      const b = band(Math.max(Math.abs(k.perceive || 0), Math.abs(k.process || 0)));
+      out.push({ key: `kolb:${k.type}`, band: b === 'strong' ? 'strong' : 'mild' });
+    }
+
+    const ext = result.extended;
+    if (ext) {
+      const ap = ext.approach || {};
+      if (typeof ap.surface === 'number' && ap.surface >= 60 && ap.surface > (ap.deep || 0)) {
+        out.push({ key: 'approach:surface', band: ap.surface >= 75 ? 'strong' : 'mild' });
+      }
+      const g = ext.goal || {};
+      const avoid = Math.max(g.masteryAvoid || 0, g.performanceAvoid || 0);
+      if (avoid >= 4) out.push({ key: 'goal:avoid', band: avoid >= 5 ? 'strong' : 'mild' });
+      if (ext.chrono === 'morning' || ext.chrono === 'evening') {
+        const b = band(ext.chronoScore);
+        out.push({ key: `chrono:${ext.chrono}`, band: b === 'strong' ? 'strong' : 'mild' });
+      }
+    }
+    return out;
+  }
+
   SM.score = {
     likert: scoreLikert, forced: scoreForced, vark: scoreVark, kolbType,
     band, bandText, sideOf, weakness: scoreWeakness, anxiety: scoreAnxiety,
-    basic: scoreBasic, extended: scoreExtended, summary,
+    basic: scoreBasic, extended: scoreExtended, summary, poles,
     SPECTRUM_DIMS, BALANCE, STRONG
   };
 
