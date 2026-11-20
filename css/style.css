@@ -1050,3 +1050,18 @@ a.chip { text-decoration: none; }
 .planner-nav .grow.center { flex: 1 1 0; min-width: 0; }
 /* 따로 꾸미지 않은 select도 터치 44px·글자 16px */
 select { min-height: 44px; font: inherit; max-width: 100%; }
+
+/* ---------- 과목마다 고른 전략 하나 ---------- */
+.strategy-card.is-chosen { border: 3px solid var(--accent); }
+.chosen-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 16px; font-weight: 700; color: var(--on-accent); background: var(--accent);
+}
+.choose-btn[aria-pressed="true"]::before { content: '✓ '; }
+.choose-hint { margin: 0; font-weight: 700; }
+.choose-hint-todo { color: var(--warn); }
+.strip-detail h3, .strip-detail h4 { margin: 0; }
+.strip-detail ol { margin: 0; padding-left: 1.3em; }
+.strip-empty p { margin: 0; }
+.week-subject-head { align-items: baseline; }
+.week-subject-head h4 { margin: 0; }

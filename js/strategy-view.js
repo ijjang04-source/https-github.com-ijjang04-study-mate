@@ -35,13 +35,22 @@
     return { strategies, habits: SM.recommend.habits(latest).map((h) => h.id) };
   }
 
+  // 받침: 없으면 0, 한글이 아니면 -1(ㄹ = 8)
+  function batchim(w) {
+    const t = String(w || '');
+    const c = t.charCodeAt(t.length - 1) - 0xac00;
+    return c >= 0 && c <= 11171 ? c % 28 : -1;
+  }
+  const eunNeun = (w) => (batchim(w) > 0 ? '은' : '는');
+  const euroRo = (w) => { const b = batchim(w); return b > 0 && b !== 8 ? '으로' : '로'; };
+
   function sameStrategies(a, b) {
     return JSON.stringify(a.strategies) === JSON.stringify(b.strategies);
   }
 
   /**
    * 전략 설명 카드(10단계). 다른 화면(피드)에서도 쓴다.
-   * latest: 내 최근 진단 결과(없으면 개인 맞춤 부분을 뺀다), opts: { rank: 번호|null, actions: 노드|null }
+   * latest: 내 최근 진단 결과(없으면 개인 맞춤 부분을 뺀다), opts: { rank: 번호|null, actions: 노드|null, chosen: 고른 카드면 true }
    */
   function buildStrategyCard(latest, subject, sid, opts) {
     const el = SM.ui.el;
@@ -59,10 +68,11 @@
       ? [way.place ? `추천 장소: ${way.place}` : null, way.with ? `방식: ${way.with}` : null].filter(Boolean)
       : env.lines;
 
-    return el('article', { class: 'card stack strategy-card' },
+    return el('article', { class: 'card stack strategy-card' + (o.chosen ? ' is-chosen' : '') },
       el('div', { class: 'strategy-head' },
         idx !== null ? el('span', { class: 'rank-badge', text: `${idx + 1}` }) : null,
         el('h3', { text: s.name }),
+        o.chosen ? el('span', { class: 'chosen-badge', text: '✓ 선택됨' }) : null,
         el('span', { class: 'tag', text: `${s.category} ${SM.data.strategyCategories[s.category]}` }),
         el('span', { class: 'evidence', 'aria-label': `근거 수준 ${evText}` },
           el('span', { 'aria-hidden': 'true', text: EVIDENCE_STARS[s.evidence] + ' ' }), `근거 ${evText}`)
@@ -144,6 +154,22 @@
       }
     });
 
+    /** 고른 전략이 추천 3개 안에 없으면(재진단·다른 전략 보기) 그 과목 선택을 비운다 → 비운 과목 목록 */
+    function dropStaleChosen() {
+      const gone = [];
+      Object.keys(plan.chosen || {}).forEach((sub) => {
+        const ids = (plan.strategies && plan.strategies[sub]) || [];
+        if (ids.indexOf(plan.chosen[sub]) === -1) gone.push(sub);
+      });
+      if (!gone.length) return gone;
+      plan.chosen = Object.assign({}, plan.chosen);
+      plan.chosenAt = Object.assign({}, plan.chosenAt);
+      gone.forEach((sub) => { delete plan.chosen[sub]; delete plan.chosenAt[sub]; });
+      save();
+      return gone;
+    }
+    dropStaleChosen();
+
     const root = el('div', { class: 'stack strategy' });
     // #/strategy?s=수학 이면 그 과목 탭부터
     const qs = /[?&]s=([^&]+)/.exec(String(location.hash || ''));
@@ -154,10 +180,15 @@
     // ---------- 카드 ----------
 
     function strategyCard(subject, sid, idx) {
+      const isChosen = !!(plan.chosen && plan.chosen[subject] === sid);
       return buildStrategyCard(latest, subject, sid, {
         rank: idx,
+        chosen: isChosen,
         actions: el('div', { class: 'row' },
-          el('button', { type: 'button', class: 'btn btn-primary', text: '플래너에 추가', onClick: () => addToPlanner(subject, sid) }),
+          el('button', {
+            type: 'button', class: 'btn btn-primary choose-btn', 'aria-pressed': String(isChosen),
+            text: '이 전략으로 할래', onClick: () => choose(subject, sid)
+          }),
           el('button', { type: 'button', class: 'btn', text: '다른 전략 보기', onClick: () => swap(subject, idx) })
         )
       });
@@ -181,27 +212,44 @@
       plan.swaps[subject] = (plan.swaps[subject] || []).concat([{ from, to: next, at: new Date().toISOString() }]);
       plan.confirmed = false;
       save();
+      if (dropStaleChosen().length) SM.ui.toast(`고른 전략을 바꿨어. ${subject}에서 3개 중 하나를 다시 골라 줘.`);
       render();
       const card = root.querySelectorAll('.strategy-card')[idx];
       if (card) { card.setAttribute('tabindex', '-1'); card.focus(); }
     }
 
-    function addToPlanner(subject, sid) {
-      plan.confirmed = true;
-      if (SM.planner && typeof SM.planner.addWeeklyStrategy === 'function') {
-        const r = SM.planner.addWeeklyStrategy(subject, sid) || {};
+    /** 과목마다 하나만 고른다(라디오처럼). 고르면 플래너(이번 주·이번 달)에 넣는다. */
+    let choosing = false;
+    async function choose(subject, sid) {
+      if (choosing) return;
+      const P = SM.planner;
+      const today = SM.date.today();
+      const r = P.chooseStrategy(plan, subject, sid, today);
+      if (!r.ok) return;
+      const name = SM.data.strategies.find((x) => x.id === sid).name;
+      if (!r.changed) { SM.ui.toast(`${subject}${eunNeun(subject)} 이미 '${name}'${euroRo(name)} 정했어.`); return; }
+      choosing = true;
+      try {
+        plan.confirmed = true;
         save();
-        if (r.exists) SM.ui.toast('이미 이번 주 플래너에 있어.');
-        else if (r.full) SM.ui.toast(`이번 주 ${subject} 전략이 벌써 2개야. 주간 플래너에서 바꿔 줘.`);
-        else SM.ui.toast('이번 주 플래너에 넣었어.');
-        return;
+        const wayFor = (sub, id) => P.styleWayOf(latest, sub, id);
+        if (r.prev) {
+          // 오늘 이후 계획에 이전 전략이 있으면 물어보고 바꾼다(지나간 날·기록한 블록은 그대로)
+          const n = P.replaceChosen(subject, r.prev, sid, { today, dryRun: true });
+          if (n.blocks || n.weeks) {
+            const yes = await SM.ui.confirmDialog(`이번 주 계획의 ${subject} 전략도 새 전략으로 바꿀까?`, { okText: '바꿀래', cancelText: '그대로 둘래' });
+            if (yes) P.replaceChosen(subject, r.prev, sid, { today, wayFor });
+          }
+        }
+        const applied = P.applyChosen(P.chosenOf(plan), today);
+        if (SM.feed && typeof SM.feed.syncWeek === 'function') SM.feed.syncWeek(applied.week || SM.date.isoWeek(today));
+        render();
+        const btn = root.querySelector('.choose-btn[aria-pressed="true"]');
+        if (btn) btn.focus();
+        SM.ui.toast(`${subject}${eunNeun(subject)} '${name}'${euroRo(name)} 정했어! 플래너에 넣어 뒀어.`);
+      } finally {
+        choosing = false;
       }
-      plan.plannerQueue = plan.plannerQueue || [];
-      if (!plan.plannerQueue.some((q) => q.subject === subject && q.id === sid)) {
-        plan.plannerQueue.push({ subject, id: sid, addedAt: new Date().toISOString() });
-      }
-      save();
-      SM.ui.toast('플래너가 준비되면 자동으로 들어가.');
     }
 
     function confirmPlan() {
@@ -222,7 +270,8 @@
           type: 'button', role: 'tab', class: 'tab', id: 'tab-' + s,
           'aria-selected': String(s === active), 'aria-controls': 'panel-' + s,
           tabindex: s === active ? '0' : '-1',
-          text: s,
+          text: plan.chosen && plan.chosen[s] ? `${s} ✓` : s,
+          'aria-label': plan.chosen && plan.chosen[s] ? `${s}, 전략 고름` : `${s}, 아직 안 고름`,
           onClick() { active = s; render(); const t = document.getElementById('tab-' + s); if (t) t.focus(); },
           onKeydown(e) {
             const i = subjects.indexOf(s);
@@ -239,6 +288,9 @@
       const ids = plan.strategies[active] || [];
       const panel = el('div', { class: 'stack', role: 'tabpanel', id: 'panel-' + active, 'aria-labelledby': 'tab-' + active },
         el('p', { class: 'muted', text: `${active}에서 해 볼 전략 3개야.` }),
+        plan.chosen && plan.chosen[active]
+          ? el('p', { class: 'choose-hint', role: 'status', text: `'${SM.data.strategies.find((x) => x.id === plan.chosen[active]).name}'${euroRo(SM.data.strategies.find((x) => x.id === plan.chosen[active]).name)} 하는 중이야. 다른 카드를 고르면 바꿀 수 있어.` })
+          : el('p', { class: 'choose-hint choose-hint-todo', role: 'status', text: '3개 중 하나를 골라 줘.' }),
         ids.map((sid, i) => strategyCard(active, sid, i))
       );
 

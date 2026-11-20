@@ -166,7 +166,91 @@
       return n;
     }
 
-    return { load, save, getWeek, saveWeek, getDay, saveDay, getDayData, saveDayData, nextDday, addWeeklyStrategy, drainQueue };
+    /**
+     * 고른 전략을 이번 주 '적용 전략'과 이번 달 '집중 전략' 기본값에 넣는다(전략 화면에서 고른 직후).
+     * → { week: 바뀐 주 | null, month: 바뀌었으면 true }
+     */
+    function applyChosen(chosen, today) {
+      const t = today || SM.date.today();
+      const wk = SM.date.isoWeek(t);
+      const week = normalizeWeek(getWeek(wk));
+      const out = { week: null, month: false };
+      if (seedChosenIntoWeek(week, chosen)) { saveWeek(wk, week); out.week = wk; }
+      const mk = SM.date.monthKey(t);
+      const data = load(mk);
+      if (seedMonthFocus(data.month, chosen)) { save(mk, data); out.month = true; }
+      return out;
+    }
+
+    /**
+     * 고른 전략을 from → to로 바꿀 때 오늘부터 앞으로의 계획도 바꾼다.
+     * 지나간 날의 블록, 실행 기록이 있는 블록은 그대로. 이번 주 배치표는 오늘 이후 칸만.
+     * opts: { today, days(살펴볼 날 수, 기본 56), dryRun(세기만), wayFor(subject, id) }
+     * → { blocks: 바꿀/바꾼 블록 수, weeks: 바꿀/바꾼 주 수 }
+     */
+    function replaceChosen(subject, from, to, opts) {
+      const o = opts || {};
+      const today = o.today || SM.date.today();
+      const r = { blocks: 0, weeks: 0 };
+      if (!from || !to || from === to) return r;
+      const thisWeek = SM.date.isoWeek(today);
+      const weeks = [];
+      for (let i = 0; i < (o.days || 56); i++) {
+        const iso = SM.date.addDays(today, i);
+        const w = SM.date.isoWeek(iso);
+        if (weeks.indexOf(w) === -1) weeks.push(w);
+        const day = getDayData(iso);
+        let n = 0;
+        day.blocks.forEach((b) => {
+          if (b.subject !== subject || b.strategy !== from || b.done) return;
+          n++;
+          if (o.dryRun) return;
+          const oldWay = o.wayFor ? o.wayFor(subject, from) : '';
+          b.strategy = to;
+          if (!b.method || b.method === oldWay) b.method = o.wayFor ? o.wayFor(subject, to) : '';
+        });
+        if (n) { r.blocks += n; if (!o.dryRun) saveDayData(iso, day); }
+      }
+      weeks.forEach((w) => {
+        const stored = getWeek(w);
+        if (!stored || !Object.keys(stored).length) return;
+        const week = normalizeWeek(stored);
+        let touched = false;
+        const list = week.strategies[subject] || [];
+        if (list.indexOf(from) !== -1) {
+          touched = true;
+          week.strategies[subject] = list.indexOf(to) === -1 ? list.map((x) => (x === from ? to : x)) : list.filter((x) => x !== from);
+        }
+        const oldCell = `${subject}:${from}`;
+        const newCell = `${subject}:${to}`;
+        const dates = SM.date.weekDays(w);
+        DAY_KEYS.forEach((d, i) => {
+          if (w === thisWeek && dates[i] < today) return; // 지나간 요일 칸은 그대로
+          if (week.grid[d].indexOf(oldCell) === -1) return;
+          touched = true;
+          week.grid[d] = week.grid[d].indexOf(newCell) === -1 ? week.grid[d].map((e) => (e === oldCell ? newCell : e)) : week.grid[d].filter((e) => e !== oldCell);
+        });
+        if (!touched) return;
+        r.weeks++;
+        if (o.dryRun) return;
+        if (week.autoChosen && week.autoChosen[subject] === from) week.autoChosen = Object.assign({}, week.autoChosen, { [subject]: to });
+        saveWeek(w, week);
+      });
+      if (!o.dryRun) {
+        // 이번 달 집중 전략에 옛 전략이 있으면 새 전략으로
+        const mk = SM.date.monthKey(today);
+        const data = load(mk);
+        const fs = data.month.focusStrategies;
+        const at = fs.indexOf(from);
+        if (at !== -1) {
+          if (fs.indexOf(to) === -1) fs[at] = to; else fs.splice(at, 1);
+          save(mk, data);
+        }
+      }
+      return r;
+    }
+
+    return { load, save, getWeek, saveWeek, getDay, saveDay, getDayData, saveDayData, nextDday, addWeeklyStrategy, drainQueue, applyChosen, replaceChosen };
   }
 
   const instance = createPlanner({
@@ -194,6 +278,18 @@
   function strategyName(id) {
     const s = SM.data.strategies.find((x) => x.id === id);
     return s ? s.name : id;
+  }
+
+  /** 내 스타일로 하는 법(진단이 없거나 균형이면 하는 법 첫 줄) */
+  function styleWayOf(result, subject, id) {
+    const s = SM.data.strategies.find((x) => x.id === id);
+    if (!s) return '';
+    if (!result) return s.howTo[0] || '';
+    const info = SM.recommend.explain(result, subject || (result.subjects || [])[0], id) || {};
+    const pole = SM.recommend.cardPole(result, info.pole);
+    const way = pole ? SM.data.styleWays[pole] : null;
+    if (!way) return s.howTo[0] || '';
+    return s.category === 'D' ? way.retrieval : way.understand;
   }
 
   function loadPlan() {
@@ -224,22 +320,51 @@
     );
   }
 
-  /** 핵심 전략 띠 + 일곱 가지 전략 접기 */
+  /** 상단 띠: 과목마다 고른 전략 칩(누르면 하는 법 펼침) + 일곱 가지 전략 접기 */
   function stripEl(plan) {
     const el = SM.ui.el;
-    const core = [];
-    if (plan && plan.strategies) {
-      Object.keys(plan.strategies).forEach((subject) => {
-        const id = (plan.strategies[subject] || [])[0];
-        if (id && core.length < 3) core.push({ subject, id });
-      });
-    }
+    const chosen = chosenOf(plan);
+    const order = Object.keys((plan && plan.strategies) || {});
+    Object.keys(chosen).forEach((sub) => { if (order.indexOf(sub) === -1) order.push(sub); });
+    const core = order.filter((sub) => chosen[sub]).map((sub) => ({ subject: sub, id: chosen[sub] }));
     const rules = ((plan && plan.sevenRules) || []).filter((r) => r && String(r.text || '').trim());
+    const detail = el('div', { class: 'strip-detail card stack', id: 'strip-detail', hidden: true });
+    let openKey = null;
+    const buttons = [];
+    function show(c, btn) {
+      const k = c.subject + ':' + c.id;
+      openKey = openKey === k ? null : k;
+      buttons.forEach((b) => b.setAttribute('aria-expanded', String(b === btn && openKey !== null)));
+      SM.ui.clear(detail);
+      detail.hidden = openKey === null;
+      if (openKey === null) return;
+      const st = SM.data.strategies.find((x) => x.id === c.id);
+      detail.append(
+        el('h3', { text: `${c.subject} · ${st.name}` }),
+        el('h4', { text: '하는 법' }),
+        el('ol', null, st.howTo.map((h) => el('li', { text: h }))),
+        el('h4', { text: '내 스타일로 하는 법' }),
+        el('p', { text: styleWayOf(latestResult(), c.subject, c.id) }),
+        el('a', { href: `#/strategy?s=${encodeURIComponent(c.subject)}`, class: 'link-small', text: '전략 바꾸기' })
+      );
+    }
     return el('div', { class: 'planner-strip' },
       core.length
-        ? el('div', { class: 'chip-row', 'aria-label': '내 핵심 전략' },
-          core.map((c) => el('a', { href: '#/strategy', class: 'chip chip-static', text: `${c.subject} · ${strategyName(c.id)}` })))
-        : null,
+        ? el('div', { class: 'stack' },
+          el('div', { class: 'chip-row', role: 'group', 'aria-label': '과목별로 고른 전략' },
+            core.map((c) => {
+              const b = el('button', {
+                type: 'button', class: 'chip', 'aria-expanded': 'false', 'aria-controls': 'strip-detail',
+                text: `${c.subject} · ${strategyName(c.id)}`,
+                onClick() { show(c, b); }
+              });
+              buttons.push(b);
+              return b;
+            })),
+          detail)
+        : el('div', { class: 'row strip-empty' },
+          el('p', { class: 'grow', text: '전략 탭에서 과목마다 하나를 골라 줘.' }),
+          el('a', { href: '#/strategy', class: 'btn', text: '전략 탭' })),
       el('details', { class: 'seven-fold' },
         el('summary', { text: `나만의 일곱 가지 전략${rules.length ? ` (${rules.length})` : ''}` }),
         rules.length
@@ -344,6 +469,8 @@
     const data = instance.load(mk);
     const M = data.month;
     let dirty = false;
+    // 이번 달 이후라면 '이달 집중 전략'이 비었을 때 전략 탭에서 고른 전략으로 채워 둔다
+    if (mk >= SM.date.monthKey(today) && seedMonthFocus(M, chosenOf(plan))) instance.save(mk, data);
 
     function syncFeed() { if (SM.feed && typeof SM.feed.syncMonth === 'function') SM.feed.syncMonth(mk); }
     const persist = SM.ui.debounce(() => { instance.save(mk, data); dirty = false; saved.set('saved'); syncFeed(); }, 500);
@@ -491,6 +618,7 @@
 
     // --- 이달 집중 전략 ---
     const planIds = [];
+    Object.values(chosenOf(plan)).forEach((id) => { if (planIds.indexOf(id) === -1) planIds.push(id); });
     if (plan && plan.strategies) Object.keys(plan.strategies).forEach((s) => (plan.strategies[s] || []).forEach((id) => { if (planIds.indexOf(id) === -1) planIds.push(id); }));
     const focusCount = el('p', { class: 'muted', 'aria-live': 'polite' });
     const chipMap = {};
@@ -637,6 +765,79 @@
     if (list.length >= MAX_WEEK_STRATEGIES) return { added: false, exists: false, full: true };
     list.push(id);
     return { added: true, exists: false, full: false };
+  }
+
+  // ---------- 과목마다 고른 전략 하나(plan.chosen) ----------
+  // plan.chosen = { 과목: 전략 id }, plan.chosenAt = { 과목: 'YYYY-MM-DD' }. 추천 3개(plan.strategies)는 그대로 둔다.
+  // 예전 데이터에 chosen이 없으면 빈 상태(자동으로 고르지 않음).
+
+  /** 고른 전략 표(데이터에 없는 전략 id는 뺀다) */
+  function chosenOf(plan) {
+    const out = {};
+    const c = plan && plan.chosen;
+    if (!c || typeof c !== 'object') return out;
+    Object.keys(c).forEach((sub) => { if (c[sub] && SM.data.strategies.some((x) => x.id === c[sub])) out[sub] = c[sub]; });
+    return out;
+  }
+
+  /** 과목마다 하나만 고른다(plan을 바꾼다). 추천 3개 안에서만 → { ok, prev, changed } */
+  function chooseStrategy(plan, subject, id, today) {
+    const list = (plan && plan.strategies && plan.strategies[subject]) || [];
+    if (list.indexOf(id) === -1) return { ok: false, prev: null, changed: false };
+    plan.chosen = Object.assign({}, plan.chosen);
+    plan.chosenAt = Object.assign({}, plan.chosenAt);
+    const prev = plan.chosen[subject] || null;
+    if (prev === id) return { ok: true, prev, changed: false };
+    plan.chosen[subject] = id;
+    plan.chosenAt[subject] = today || SM.date.today();
+    return { ok: true, prev, changed: true };
+  }
+
+  /**
+   * 주간 '이번 주 적용 전략'에 고른 전략을 맨 앞에 넣는다. 한 번 넣은 것(week.autoChosen)은 학생이 빼도 다시 넣지 않는다.
+   * 과목 칸이 가득(2개)이면 마지막 것을 뺀다(배치표는 그대로). → 바뀌었으면 true
+   */
+  function seedChosenIntoWeek(week, chosen) {
+    let changed = false;
+    const auto = Object.assign({}, week.autoChosen);
+    Object.keys(chosen || {}).forEach((sub) => {
+      const id = chosen[sub];
+      if (auto[sub] === id) return;
+      auto[sub] = id;
+      changed = true;
+      const list = (week.strategies[sub] || []).filter((x) => x !== id);
+      list.unshift(id);
+      week.strategies[sub] = list.slice(0, MAX_WEEK_STRATEGIES);
+    });
+    if (changed) week.autoChosen = auto;
+    return changed;
+  }
+
+  /** 월간 '이달 집중 전략' 기본값: 비어 있고 아직 채운 적 없으면 고른 전략으로 → 바뀌었으면 true */
+  function seedMonthFocus(month, chosen) {
+    if (month.focusSeeded || (month.focusStrategies || []).length) return false;
+    const ids = [];
+    Object.keys(chosen || {}).forEach((sub) => { if (ids.indexOf(chosen[sub]) === -1 && ids.length < MAX_FOCUS) ids.push(chosen[sub]); });
+    if (!ids.length) return false;
+    month.focusStrategies = ids;
+    month.focusSeeded = true;
+    return true;
+  }
+
+  /**
+   * 일간 블록의 과목을 바꿨을 때: 전략이 비었거나 이전 과목의 고른 전략이었으면 새 과목의 고른 전략으로 채운다.
+   * 학생이 직접 고른 다른 전략, 실행 기록이 있는 블록은 그대로. 실행 방식도 기본값이면 함께 바꾼다. → 바뀌었으면 true
+   */
+  function autoFillStrategy(block, prevSubject, chosen, wayFor) {
+    if (block.done) return false;
+    const c = chosen || {};
+    if (block.strategy && block.strategy !== c[prevSubject]) return false;
+    const next = (block.subject && c[block.subject]) || null;
+    if (next === block.strategy) return false;
+    const oldWay = block.strategy && wayFor ? wayFor(prevSubject, block.strategy) : '';
+    block.strategy = next;
+    if (!block.method || block.method === oldWay) block.method = next && wayFor ? wayFor(block.subject, next) : '';
+    return true;
   }
 
   /** 'mon' 칸에서 그 과목의 전략 id 목록 */
@@ -832,6 +1033,13 @@
     // 학생이 지운 문장(carryDismissed)은 다시 넣지 않는다
     week.intentions = carryInto(week.intentions, nextChangeOf(instance.getWeek(prevWeek(wk))), week.carryDismissed);
 
+    // 전략 탭에서 고른 전략을 '이번 주 적용 전략'에(이번 주 이후만, 지나간 주는 그대로)
+    const chosen = chosenOf(plan);
+    if (wk >= SM.date.isoWeek(today) && seedChosenIntoWeek(week, chosen)) {
+      instance.saveWeek(wk, week);
+      if (SM.feed && typeof SM.feed.syncWeek === 'function') SM.feed.syncWeek(wk);
+    }
+
     let dirty = false;
     // 저장할 때마다 반 피드 스냅샷도 맞춘다(공개면 갱신, 아니면 삭제)
     function syncFeed() { if (SM.feed && typeof SM.feed.syncWeek === 'function') SM.feed.syncWeek(wk); }
@@ -929,7 +1137,10 @@
           });
         };
         stratSec.appendChild(el('div', { class: 'stack week-subject' },
-          el('h4', { text: `${s} (${picked.length}/2)` }),
+          el('div', { class: 'row week-subject-head' },
+            el('h4', { class: 'grow', text: `${s} (${picked.length}/2)` }),
+            el('a', { href: `#/strategy?s=${encodeURIComponent(s)}`, class: 'link-small', text: '전략 바꾸기' })),
+          chosen[s] ? el('p', { class: 'muted', text: `전략 탭에서 고른 전략: ${strategyName(chosen[s])}` }) : null,
           choices.length ? el('div', { class: 'chip-row', role: 'group', 'aria-label': `${s} 전략` }, choices.map(chip)) : null,
           el('details', null,
             el('summary', { text: '기타: 전체 32개에서 고르기' }),
@@ -1297,16 +1508,8 @@
     const week = normalizeWeek(instance.getWeek(wk));
     const monthFocus = instance.load(monthKeyForWeek(wk)).month.focusStrategies;
 
-    function styleWayFor(subject, id) {
-      const s = SM.data.strategies.find((x) => x.id === id);
-      if (!s) return '';
-      if (!result) return s.howTo[0] || '';
-      const info = SM.recommend.explain(result, subject || (result.subjects || [])[0], id) || {};
-      const pole = SM.recommend.cardPole(result, info.pole);
-      const way = pole ? SM.data.styleWays[pole] : null;
-      if (!way) return s.howTo[0] || '';
-      return s.category === 'D' ? way.retrieval : way.understand;
-    }
+    const styleWayFor = (subject, id) => styleWayOf(result, subject, id);
+    const chosen = chosenOf(plan);
 
     // 미리 만들기(한 번만)
     const pre = prefillDay(instance.getDayData(iso), week.grid[dayKey], styleWayFor);
@@ -1419,6 +1622,8 @@
       targetN.value = b.target && b.target.n !== null && b.target.n !== undefined ? String(b.target.n) : '';
 
       const opts = strategyOptions(b.subject);
+      const mine = chosen[b.subject];
+      if (mine && opts.indexOf(mine) === -1) opts.unshift(mine);
       if (b.strategy && opts.indexOf(b.strategy) === -1) opts.push(b.strategy);
       const other = el('select', {
         id: pid + '-other', 'aria-label': '기타 전략',
@@ -1442,7 +1647,13 @@
 
       const planBox = el('div', { class: 'stack block-plan', id: pid + '-body' },
         el('div', { class: 'row time-row' }, field('시작', timeInput('start', '시작 시간'), `${pid}-start`), el('span', { 'aria-hidden': 'true', text: '~' }), field('끝', timeInput('end', '끝 시간'), `${pid}-end`)),
-        field('과목', chipGroup('과목', subjectsForChips().map((s) => [s, s]), (id) => b.subject === id, (id) => { b.subject = b.subject === id ? '' : id; changed(); rerender(); }, 'subj')),
+        field('과목', chipGroup('과목', subjectsForChips().map((s) => [s, s]), (id) => b.subject === id, (id) => {
+          const prev = b.subject;
+          b.subject = b.subject === id ? '' : id;
+          // 전략 탭에서 고른 그 과목 전략으로 적용 전략·실행 방식을 채운다(학생이 직접 고른 전략은 그대로)
+          if (autoFillStrategy(b, prev, chosen, styleWayFor) && b.done) b.done.checks = [null, null];
+          changed(); rerender();
+        }, 'subj')),
         field('범위', topic, pid + '-topic'),
         field('목표 분량', el('div', { class: 'row wrap' }, targetN,
           chipGroup('단위', UNITS.map((u) => [u, u]), (u) => b.target.unit === u, (u) => { b.target.unit = u; changed(); rerender(); }, 'unit')), pid + '-tn'),
@@ -1637,7 +1848,8 @@
     DAY_KEYS, normalizeWeek, addStrategyToWeek, cellEntries, subjectDays, clumped, spreadSuggestion, applySpread,
     copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek, carryInto,
     MAX_BLOCKS, UNITS, PLACES, WITH, MODES, BLOCKERS, newBlock, addBlock, moveBlock, prefillDay, suggestApplied,
-    copyPlan, newDone, envHints, doneSummary, minutesText
+    copyPlan, newDone, envHints, doneSummary, minutesText,
+    chosenOf, chooseStrategy, seedChosenIntoWeek, seedMonthFocus, autoFillStrategy, styleWayOf
   });
 
   if (typeof SM.route === 'function') {
