@@ -235,6 +235,8 @@
         isNew = true;
       }
 
+      // 반 서버(원격 저장소)를 쓰면 이 기기에 반 키를 기억한다(입장 코드 원문은 저장하지 않는다)
+      if (SM.remote && typeof SM.remote.rememberClassKey === 'function') await SM.remote.rememberClassKey(classId, code);
       store.set(SM.keys.session(), { sid, lastActive: now() });
       return { ok: true, sid, classId, isNew, profile };
     }

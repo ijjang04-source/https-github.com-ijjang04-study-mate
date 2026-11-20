@@ -252,15 +252,25 @@
       return result;
     }
 
-    /** 다른 탭에서 sm:v1: 키가 바뀌면 fn(key) 호출. 전체 삭제는 fn(null). 해제 함수를 반환한다. */
+    // 같은 탭 안에서 바뀐 것(원격 저장소에서 받아 온 것 등)을 알리는 구독자
+    const localListeners = new Set();
+
+    /** 같은 탭에서 키가 바뀌었다고 알린다. info: { source: 'remote' } 등 */
+    function emit(key, info) {
+      localListeners.forEach((fn) => { try { fn(key, info || {}); } catch (e) { console.warn('[SM.store] 변경 알림 실패', e); } });
+    }
+
+    /** 다른 탭에서 sm:v1: 키가 바뀌면 fn(key, { source: 'tab' }) 호출. 전체 삭제는 fn(null).
+     *  같은 탭의 emit(key, info)도 받는다. 해제 함수를 반환한다. */
     function onChange(fn) {
-      if (typeof window.addEventListener !== 'function') return () => {};
+      localListeners.add(fn);
+      if (typeof window.addEventListener !== 'function') return () => localListeners.delete(fn);
       const handler = (e) => {
-        if (e.key === null) fn(null);
-        else if (e.key.startsWith(PREFIX)) fn(e.key.slice(PREFIX.length));
+        if (e.key === null) fn(null, { source: 'tab' });
+        else if (e.key.startsWith(PREFIX)) fn(e.key.slice(PREFIX.length), { source: 'tab' });
       };
       window.addEventListener('storage', handler);
-      return () => window.removeEventListener('storage', handler);
+      return () => { localListeners.delete(fn); window.removeEventListener('storage', handler); };
     }
 
     // 스키마 버전 n으로 올리는 함수. 새 버전을 만들 때 여기에 추가한다.
@@ -305,7 +315,7 @@
 
     return {
       get, set, update, remove, keys, usageBytes, ownKeys, track, stopTracking, forget,
-      exportAll, importAll, onChange, migrate, init,
+      exportAll, importAll, onChange, emit, migrate, init,
       isPersistent: persistent,
       PREFIX, SCHEMA
     };

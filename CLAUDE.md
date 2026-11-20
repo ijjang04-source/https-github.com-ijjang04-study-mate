@@ -60,6 +60,7 @@ js/
   strategy-view.js 기능 2 화면
   planner.js       기능 3
   checkin.js       기능 4
+  remote.js        반 서버 어댑터(SM.remote: get/list/put/delete, 가짜 서버)
   feed.js          반 피드·댓글
   chat.js          챗봇 엔진
   settings.js      설정·백업
@@ -72,7 +73,7 @@ tests/
 docs/PRD.md, docs/research.md
 ```
 
-`index.html`의 스크립트 로드 순서: `config → ui → dateutil → store → auth → data/* → recommend → test → strategy-view → planner → checkin → feed → chat → settings → app`.
+`index.html`의 스크립트 로드 순서: `config → ui → dateutil → store → auth → data/* → recommend → test → strategy-view → planner → checkin → remote → feed → chat → settings → app`.
 
 ## 6. 결정된 사항
 

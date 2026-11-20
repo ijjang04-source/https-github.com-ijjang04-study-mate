@@ -29,6 +29,10 @@
 
     autoLogoutMinutes: 30,
 
+    // 반 서버(원격 저장소). 없으면(null) 우리 반 피드는 이 기기 안에서만 보인다.
+    // 설정법: docs/remote-setup.md. 예) remote: { type: 'apps-script', url: 'https://script.google.com/macros/s/…/exec' },
+    remote: null,
+
     // 챗봇이 자해·자살 관련 표현을 알아들었을 때의 응답(말풍선 하나에 한 줄씩).
     // 학교 사정에 맞게 문구와 연락처를 바꿀 수 있다.
     crisis: {

@@ -4,6 +4,7 @@
 
 - 선생님용 안내서: [docs/teacher-guide.md](docs/teacher-guide.md)
 - 학생용 한 장 안내: [docs/student-guide.md](docs/student-guide.md)
+- 반 서버(우리 반 피드를 기기끼리 공유) 설정: [docs/remote-setup.md](docs/remote-setup.md)
 - 통합 점검 결과: [docs/QA.md](docs/QA.md)
 
 ## 실행 방법
@@ -33,6 +34,7 @@ Node.js가 없으면 `tests/tests.html`을 브라우저로 열어 같은 테스�
 - [ ] **코드 원문은 어디에도 적지 않는다.** config.js·커밋 메시지·README·이슈에 숫자 코드를 쓰지 않는다. 해시만 넣는다.
 - [ ] **짧은 숫자 코드의 한계를 안다.** 4~6자리 숫자는 해시만 봐도 컴퓨터로 금방 알아낼 수 있다. 입장 코드는 "다른 반 학생이 실수로 들어오지 않게 하는 문"이지 비밀번호가 아니다. 반 밖으로 알려지면 새 코드로 바꾼다.
 - [ ] **금칙어를 채운다.** `bannedWords`는 지금 예시 3개뿐이다. 학교에서 쓸 목록으로 채운다(소문자, 공백 없이).
+- [ ] **반 서버를 쓸지 정한다.** 쓰면 `remote`에 Apps Script 웹 앱 URL을 넣고 `classes` 시트의 코드를 `config.js`와 같게 맞춘다([docs/remote-setup.md](docs/remote-setup.md)). 안 쓰면 `remote: null` 그대로 둔다.
 - [ ] **과목·자동 로그아웃 기본값을 확인한다.** `subjects`, `autoLogoutMinutes`(공용 기기 권장 30분).
 - [ ] **위기 대응 문구를 확인한다.** `crisis.lines`의 상담 안내(청소년 상담 1388, 자살예방 상담 109)와 학교 상담실 안내가 맞는지 확인한다.
 - [ ] `node tests/run.js`가 모두 통과하는지 확인한다. DEMO를 지운 설정에서는 "어느 반도 체험 코드 1234를 받지 않는다"를 테스트가 함께 확인한다.
@@ -86,7 +88,8 @@ js/
   strategy-view.js 기능 2 화면
   planner.js       기능 3
   checkin.js       기능 4
-  feed.js          반 피드·댓글
+  remote.js        반 서버 어댑터(Apps Script·테스트용 가짜)
+  feed.js          반 피드·댓글(반 서버가 있으면 로컬 사본 + 보낼 목록)
   chat.js          챗봇 엔진
   settings.js      설정·백업
   app.js           라우터·초기화 (마지막에 로드)
@@ -96,11 +99,15 @@ tests/
   tests.html       브라우저 테스트 러너
   seed.js          1년치 가짜 데이터(성능 점검)
   perf.html        화면 그리기 시간 측정
+  remote.test.js   반 서버 동기화(가짜 서버 두 기기)
   *.test.js
 docs/
   QA.md            통합 점검 결과
   teacher-guide.md 선생님용 안내서
   student-guide.md 학생용 한 장 안내
+  remote-setup.md  반 서버 설정(선생님용)
+server/
+  apps-script.gs   반 서버 코드(구글 시트의 Apps Script에 붙여 넣음, 앱에서 불러오지 않음)
 ```
 
 개발 규칙은 `CLAUDE.md`를 따른다.

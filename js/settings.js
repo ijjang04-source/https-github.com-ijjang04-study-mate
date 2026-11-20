@@ -247,6 +247,41 @@
       preview.hidden = false;
     }
 
+    // --- 반 서버(원격 저장소가 설정됐을 때만) ---
+    const remoteOn = !!(SM.remote && SM.remote.enabled());
+    let remoteBox = null;
+    if (remoteOn) {
+      const status = el('p', { 'aria-live': 'polite' });
+      const paintRemote = () => {
+        const n = SM.feed.pendingCount();
+        const at = SM.feed.migratedAt();
+        status.textContent = (n ? `아직 보내지 못한 변경 ${n}개(인터넷에 연결되면 보내요)` : '보낼 변경 없음') +
+          (at ? ` · 올린 날짜 ${formatDate(at)}` : '');
+      };
+      const upload = el('button', {
+        type: 'button', class: 'btn', text: '우리 반 기록을 반 서버로 올리기',
+        async onClick() {
+          const own = (key) => SM.feed.ownItems(SM.store.get(key, []), sid).length;
+          const classId = SM.storeUtil.classIdOf(sid);
+          const yes = await SM.ui.confirmDialog(
+            `이 기기에 있는 내 공개 계획 ${own(SM.keys.feed(classId))}개, 댓글·반응 ${own(SM.keys.comments(classId))}개를 반 서버로 올릴게. 진행할까?`,
+            { okText: '올리기' });
+          if (!yes) return;
+          upload.disabled = true;
+          const r = await SM.feed.migrateToRemote();
+          upload.disabled = false;
+          SM.ui.toast(r.ok ? `올렸어: 새로 ${r.created}개 · 이미 있음 ${r.existing}개` : r.error, 3500);
+          paintRemote();
+        }
+      });
+      remoteBox = el('div', { class: 'stack' },
+        el('p', { class: 'muted', text: '우리 반 피드(공개한 계획·댓글·반응)는 반 서버로 모여요. 플래너·점검표·진단 결과는 이 기기에만 있어요.' }),
+        status,
+        el('p', { class: 'muted', text: '반 서버를 켜기 전에 이 기기에서 쓴 내 계획과 댓글을 한 번 올려 주세요. 여러 번 눌러도 겹치지 않아요.' }),
+        upload);
+      paintRemote();
+    }
+
     // --- 저장 공간 ---
     const bytes = SM.store.usageBytes();
     const pct = Math.min(100, Math.round(bytes / LIMIT_BYTES * 100));
@@ -299,11 +334,14 @@
         el('button', { type: 'button', class: 'btn', text: '내 데이터 내보내기', onClick: doExport }),
         el('label', { for: 'import-file', text: '백업 파일 불러오기' }),
         fileInput, fileErr, preview),
+      remoteBox ? card('반 서버', remoteBox) : null,
       card('저장 공간', usage),
       card('보안', logoutBox),
       card('앱 정보',
         el('p', { text: `공부 메이트 ${SM.config.version || ''}` }),
-        el('p', { class: 'muted', text: '이 앱은 데이터를 이 기기 브라우저에만 저장해요. 서버로 보내지 않아요.' })),
+        el('p', { class: 'muted', text: remoteOn
+          ? '공개한 계획·댓글·반응만 반 서버로 보내요. 나머지 기록은 이 기기 브라우저에만 저장해요.'
+          : '이 앱은 데이터를 이 기기 브라우저에만 저장해요. 서버로 보내지 않아요.' })),
       card('내 데이터 지우기',
         el('p', { class: 'muted', text: '다른 친구의 기록은 지워지지 않아요.' }),
         el('button', { type: 'button', class: 'btn btn-danger', text: '내 데이터 전체 삭제', onClick: doDeleteAll }))

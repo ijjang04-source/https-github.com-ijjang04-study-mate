@@ -158,6 +158,7 @@
 
   const pendingKeys = new Set();
   let refreshTimer = null;
+  let fromOtherTab = false; // 원격(반 서버)에서 받은 변경만이면 '다른 창' 토스트를 띄우지 않는다
 
   // 입력이 끝난(포커스가 빠진) 뒤 500ms 디바운스 저장이 먼저 끝나도록 조금 기다린다.
   const REFRESH_AFTER_EDIT_MS = 700;
@@ -171,11 +172,12 @@
       pendingKeys.forEach((k) => { if (SM.store.forget) SM.store.forget(k); });
       pendingKeys.clear();
       render();
-      SM.ui.toast('다른 창에서 바뀐 내용을 불러왔어.');
+      if (fromOtherTab) SM.ui.toast('다른 창에서 바뀐 내용을 불러왔어.');
+      fromOtherTab = false;
     }, delay);
   }
 
-  function onExternalChange(key) {
+  function onExternalChange(key, info) {
     if (key === null || key === SM.keys.session()) { render(); return; }
     if (!needsRefresh(key, currentKeys)) {
       // 지금 화면이 안 쓰는 키: 다음에 읽을 때 새 값을 기준으로
@@ -183,6 +185,7 @@
       return;
     }
     pendingKeys.add(key);
+    if (!info || info.source !== 'remote') fromOtherTab = true;
     scheduleRefresh(isEditing() ? REFRESH_AFTER_EDIT_MS : 50);
   }
 
