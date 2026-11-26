@@ -108,13 +108,13 @@
 
   test('checkin: 다음 주 실행 의도 맨 위, 중복 없음, 3개까지', () => {
     assert.deepEqual(C.applyNextChange([], '목요일엔 하나만'), [{ text: '목요일엔 하나만', from: 'lastWeek' }]);
-    const two = [{ text: 'a', from: null }, { text: 'b', from: 'seven' }, { text: 'c', from: null }];
+    const two = [{ text: 'a', from: null }, { text: 'b', from: 'myRule' }, { text: 'c', from: null }];
     assert.deepEqual(C.applyNextChange(two, 'x').map((x) => x.text), ['x', 'a', 'b']);
     // 이미 있으면 글만 바꿈
     const had = [{ text: '옛것', from: 'lastWeek' }, { text: 'a', from: null }];
     assert.deepEqual(C.applyNextChange(had, '새것'), [{ text: '새것', from: 'lastWeek' }, { text: 'a', from: null }]);
     // 같은 문장이 이미 있으면 그대로
-    assert.deepEqual(C.applyNextChange([{ text: 'x', from: 'seven' }], ' x '), [{ text: 'x', from: 'seven' }]);
+    assert.deepEqual(C.applyNextChange([{ text: 'x', from: 'myRule' }], ' x '), [{ text: 'x', from: 'myRule' }]);
     // 빈 칸은 밀어내지 않음
     assert.deepEqual(C.applyNextChange([{ text: '', from: null }], 'x'), [{ text: 'x', from: 'lastWeek' }]);
     assert.deepEqual(C.applyNextChange(two, '  '), two);

@@ -696,8 +696,7 @@ a.tab { display: inline-flex; align-items: center; text-decoration: none; }
 .chip-static { text-decoration: none; }
 
 .planner-strip { display: grid; gap: var(--gap); }
-.seven-fold summary, details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
-.seven-fold ol { margin: 0; padding-left: 1.3em; }
+details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
 
 .planner-nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); }
 .planner-nav input { min-height: 44px; font: inherit; max-width: 100%; }
@@ -882,18 +881,21 @@ button.cal-cell { cursor: pointer; }
 .block-summary { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .block-day { display: flex; justify-content: space-between; min-height: 44px; align-items: center; padding: 0 var(--gap); color: var(--text); text-decoration: none; border: 1px solid var(--line); border-radius: 6px; }
 
-/* ---------- 일곱 가지 전략 ---------- */
+/* ---------- 나만의 한 가지 전략 ---------- */
 
-.seven-list { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(var(--gap) * 1.5); }
+/* 한 문장을 크게(만들기 미리보기, 플래너 상단 띠) */
+.rule-big { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+.rule-big.muted { font-size: 16px; font-weight: 400; }
+.rule-preview-card { border: 2px solid var(--accent); }
+.rule-strip { padding: var(--gap) calc(var(--gap) * 1.5); background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); }
+.rule-strip-label { margin: 0; font-size: 14px; }
+.rule-quote { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.rule-check { border-left: 4px solid var(--accent); }
+.rule-history ol { margin: 0; padding-left: 1.3em; }
+.rule-history li p { margin: 0; }
+.rule-kept { margin: 0; font-weight: 700; }
 
-.seven-item {
-  padding: calc(var(--gap) * 1.5);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.seven-item textarea {
+#rule-action {
   width: 100%;
   min-height: 64px;
   padding: var(--gap);
@@ -905,7 +907,8 @@ button.cal-cell { cursor: pointer; }
   resize: vertical;
 }
 
-.seven-num {
+/* 동그라미 번호(월간 목표 등) */
+.num-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;

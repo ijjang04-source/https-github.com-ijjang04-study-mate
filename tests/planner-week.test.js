@@ -79,19 +79,19 @@
     const grid = emptyGrid(); grid.mon = ['수학:interleave'];
     const last = {
       goals: [{ subject: '수학', text: '40개' }], strategies: { 수학: ['interleave'] }, grid,
-      intentions: [{ text: '지난주 바꾼 것', from: 'lastWeek' }, { text: '만약 9시가 되면 푼다', from: 'seven' }], obstacle: '목요일 보강'
+      intentions: [{ text: '지난주 바꾼 것', from: 'lastWeek' }, { text: '만약 9시가 되면 푼다', from: 'myRule' }], obstacle: '목요일 보강'
     };
     const cur = { goals: [{ subject: '수학', text: '새 목표' }], obstacle: '이번 주 장애물' };
     const out = P.copyFromLastWeek(cur, last);
     assert.deepEqual(out.goals, [{ subject: '수학', text: '' }]);
     assert.deepEqual(out.strategies, { 수학: ['interleave'] });
     assert.deepEqual(out.grid.mon, ['수학:interleave']);
-    assert.deepEqual(out.intentions, [{ text: '만약 9시가 되면 푼다', from: 'seven' }]);
+    assert.deepEqual(out.intentions, [{ text: '만약 9시가 되면 푼다', from: 'myRule' }]);
     assert.equal(out.obstacle, '이번 주 장애물');
     out.grid.mon.push('x'); assert.deepEqual(last.grid.mon, ['수학:interleave']);
   });
 
-  test('week: 블록 요약, 지난주 키, 다음 주에 바꿀 한 가지, 일곱 전략 → 실행 의도', () => {
+  test('week: 블록 요약, 지난주 키, 다음 주에 바꿀 한 가지, 나만의 한 가지 전략 → 실행 의도', () => {
     const days = { '2026-11-09': [{ done: true }, { done: false }], '2026-11-11': [{ status: 'done' }] };
     const s = P.blockSummary('2026-W46', (iso) => days[iso] || []);
     assert.equal(s.length, 7);

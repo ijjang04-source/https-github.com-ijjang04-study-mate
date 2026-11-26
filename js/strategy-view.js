@@ -309,7 +309,7 @@
             text: plan.confirmed ? '✓ 이 전략으로 하는 중' : '이 전략으로 할게',
             onClick: confirmPlan
           }),
-          el('a', { href: '#/strategy/seven', class: 'btn', text: '나만의 일곱 가지 전략 만들기' })
+          el('a', { href: '#/strategy/seven', class: 'btn', text: '나만의 한 가지 전략 만들기' })
         )
       ].forEach((n) => { if (n) root.appendChild(n); });
     }
@@ -345,139 +345,182 @@
   }
 
   // =====================================================================
-  // #/strategy/seven 나만의 일곱 가지 전략
-  // plan.sevenRules = [{ text, strategyId|null, habitId|null }] (7칸, 빈 칸은 text '')
+  // #/strategy/seven 나만의 한 가지 전략(경로는 예전 그대로 둔다)
+  // plan.myRule = { text, situation, action, subject, strategyId, updatedAt }
+  // plan.myRuleHistory = [예전 myRule…] (바꾸기 전 문장)
+  // 자동 저장: 이 화면을 열 때의 문장과 달라지면 그 문장을 기록에 한 번 남긴다.
   // =====================================================================
 
-  const SEVEN = 7;
+  const RULE_TITLE = '나만의 한 가지 전략';
+  const RULE_INTRO = '언제(상황) + 무엇을(행동)이 들어간 한 문장을 매일 지켜 보자.';
 
-  function nameOf(rule) {
-    if (!rule) return null;
-    if (rule.strategyId) {
-      const s = SM.data.strategies.find((x) => x.id === rule.strategyId);
-      return s ? s.name : null;
-    }
-    if (rule.habitId) {
-      const h = SM.data.habits.find((x) => x.id === rule.habitId);
-      return h ? h.name : null;
-    }
-    return null;
+  function strategyNameOf(id) {
+    const s = SM.data.strategies.find((x) => x.id === id);
+    return s ? s.name : '';
   }
 
-  function padSeven(rules) {
-    const out = (Array.isArray(rules) ? rules : []).slice(0, SEVEN).map((r) => ({
-      text: String((r && r.text) || ''),
-      strategyId: (r && r.strategyId) || null,
-      habitId: (r && r.habitId) || null
-    }));
-    while (out.length < SEVEN) out.push({ text: '', strategyId: null, habitId: null });
-    return out;
+  function dayText(iso) {
+    try { return SM.date.formatKorean(String(iso).slice(0, 10)); } catch (e) { return ''; }
   }
 
-  function sevenScreen() {
+  function historyEl(plan) {
+    const el = SM.ui.el;
+    const list = (Array.isArray(plan.myRuleHistory) ? plan.myRuleHistory : []).filter((r) => r && String(r.text || '').trim());
+    if (!list.length) return null;
+    return el('details', { class: 'card rule-history' },
+      el('summary', { text: `이전 문장 (${list.length})` }),
+      el('ol', { class: 'stack', reversed: true }, list.slice().reverse().map((r) => el('li', null,
+        el('p', { text: r.text }),
+        r.updatedAt ? el('p', { class: 'muted', text: `${dayText(r.updatedAt)}에 정함` }) : null
+      )))
+    );
+  }
+
+  function myRuleScreen() {
     const el = SM.ui.el;
     const profile = me();
     const found = latestResult();
+    const head = (...extra) => el('div', { class: 'card stack' },
+      el('h2', { text: RULE_TITLE, tabindex: '-1' }),
+      el('p', { text: RULE_INTRO }),
+      ...extra);
     if (!found) {
-      return el('div', { class: 'card stack' },
-        el('h2', { text: '나만의 일곱 가지 전략' }),
-        el('p', { text: '먼저 진단을 해 볼까? 결과에 맞춰 초안을 만들어 줄게.' }),
-        el('a', { href: '#/test', class: 'btn btn-primary', text: '진단하러 가기' })
-      );
+      return head(
+        el('p', { text: '먼저 진단을 해 볼까? 결과에 맞춰 상황과 행동 초안을 만들어 줄게.' }),
+        el('a', { href: '#/test', class: 'btn btn-primary', text: '진단하러 가기' }));
     }
     const { latest } = found;
     const planKey = SM.keys.plan(profile.sid);
-    let plan = SM.store.get(planKey, null) || {};
+    const plan = SM.store.get(planKey, null) || {};
+    const base = plan.myRule && String(plan.myRule.text || '').trim() ? plan.myRule : null;
+    const options = SM.recommend.ruleStrategyOptions(plan);
 
-    let rules;
-    if (Array.isArray(plan.sevenRules) && plan.sevenRules.length) {
-      rules = padSeven(plan.sevenRules);
-    } else {
-      rules = padSeven(SM.recommend.sevenDrafts(latest, plan));
-      persist();
+    if (!options.length) {
+      return el('div', { class: 'stack' },
+        head(
+          base ? el('p', { class: 'rule-big', text: base.text }) : null,
+          el('p', { text: '전략 탭에서 과목마다 전략을 하나 고르면, 그 전략으로 문장을 만들 수 있어.' }),
+          el('a', { href: '#/strategy', class: 'btn btn-primary', text: '전략 고르러 가기' })),
+        historyEl(plan));
     }
+
+    // ---------- 상태 ----------
+    const situations = SM.recommend.ruleSituations(latest);
+    let pick = (base && options.find((o) => o.strategyId === base.strategyId && (!base.subject || o.subject === base.subject))) || options[0];
+    let situation = base && base.situation ? base.situation : situations[0].text;
+    let custom = !situations.some((s) => s.text === situation);
+    let action = base && base.action ? base.action : SM.recommend.ruleActionDraft(pick.strategyId);
 
     const saved = SM.ui.savedIndicator();
+    const current = () => SM.recommend.ruleText(situation, action);
 
     function persist() {
-      SM.store.update(planKey, (p) => Object.assign({}, p || {}, {
-        sevenRules: rules.map((r) => ({ text: r.text, strategyId: r.strategyId, habitId: r.habitId })),
-        updatedAt: new Date().toISOString()
-      }), {});
+      const text = current();
+      if (!text) return false;              // 상황·행동이 빠진 문장은 저장하지 않는다
+      SM.store.update(planKey, (p) => SM.recommend.saveMyRule(p || {}, {
+        text, situation, action, subject: pick.subject, strategyId: pick.strategyId
+      }, base), {});
+      saved.set('saved');
+      return true;
+    }
+    const debouncedSave = SM.ui.debounce(persist, 500);
+    function changed(now) {
+      paintPreview();
+      if (!current()) { debouncedSave.cancel(); return; }
+      saved.set('saving');
+      if (now) { debouncedSave.cancel(); persist(); } else debouncedSave();
     }
 
-    const debouncedSave = SM.ui.debounce(() => { persist(); saved.set('saved'); }, 500);
+    // ---------- 3. 행동(1·2단계에서 참조하므로 먼저 만든다) ----------
+    const hintText = () => `'${strategyNameOf(pick.strategyId)}' 하는 법 첫 단계로 채웠어. 내 말로 고쳐도 돼.`;
+    const actionHint = el('p', { class: 'muted', text: hintText() });
+    const actionInput = el('textarea', {
+      id: 'rule-action', rows: 2, maxlength: 80,
+      onInput(e) { action = e.target.value; changed(false); }
+    });
+    actionInput.value = action;
 
-    function warningText(text) {
-      const c = SM.recommend.checkRule(text);
-      if (c.ok) return '';
-      if (c.missing === 'when') return "언제(상황)가 빠진 것 같아. '~하면'이나 '~전에'를 넣어 볼래?";
-      return '무엇을(행동) 할지도 적어 줄래?';
-    }
-
-    const list = el('ol', { class: 'seven-list' });
-
-    function row(i) {
-      const r = rules[i];
-      const inputId = 'seven-' + i;
-      const tag = el('span', { class: 'tag', text: nameOf(r) || '직접 작성' });
-      const warn = el('p', { class: 'field-warn', id: inputId + '-warn', 'aria-live': 'polite', text: warningText(r.text) });
-      const input = el('textarea', {
-        id: inputId, rows: 2, maxlength: 120, 'aria-describedby': inputId + '-warn',
-        'aria-label': `${i + 1}번째 전략 문장`,
-        onInput(e) {
-          rules[i].text = e.target.value;
-          if (!e.target.value.trim()) { rules[i].strategyId = null; rules[i].habitId = null; tag.textContent = '직접 작성'; }
-          warn.textContent = warningText(e.target.value);
-          saved.set('saving');
-          debouncedSave();
-        }
-      });
-      input.value = r.text;
-
-      function replaceWith(next) {
-        rules[i] = next;
-        input.value = next.text;
-        tag.textContent = nameOf(next) || '직접 작성';
-        warn.textContent = warningText(next.text);
-        persist();
-        saved.set('saved');
+    // ---------- 1. 전략 ----------
+    const stratBox = el('div', { class: 'stack' });
+    function paintStrategy() {
+      SM.ui.clear(stratBox);
+      if (options.length === 1) {
+        stratBox.appendChild(el('p', { text: `${pick.subject} · ${strategyNameOf(pick.strategyId)}` }));
+        return;
       }
-
-      return el('li', { class: 'seven-item stack' },
-        el('div', { class: 'row' }, el('span', { class: 'seven-num', text: String(i + 1) }), tag),
-        input,
-        warn,
-        el('div', { class: 'row' },
-          el('button', {
-            type: 'button', class: 'btn', text: '다시 만들기',
-            onClick() {
-              const next = SM.recommend.nextDraft(latest, plan, rules, i);
-              if (!next) { SM.ui.toast('더 만들 수 있는 초안이 없어.'); return; }
-              replaceWith({ text: next.text, strategyId: next.strategyId, habitId: next.habitId });
-            }
-          }),
-          el('button', {
-            type: 'button', class: 'btn btn-ghost', text: '비우기',
-            onClick() { replaceWith({ text: '', strategyId: null, habitId: null }); input.focus(); }
-          })
-        )
-      );
+      stratBox.appendChild(el('div', { class: 'chip-row', role: 'group', 'aria-label': '전략 고르기' },
+        options.map((o, i) => el('button', {
+          type: 'button', class: 'chip' + (o === pick ? ' chip-on' : ''), 'aria-pressed': String(o === pick),
+          text: `${o.subject} · ${strategyNameOf(o.strategyId)}`,
+          onClick() {
+            if (o === pick) return;
+            const oldDraft = SM.recommend.ruleActionDraft(pick.strategyId);
+            pick = o;
+            // 학생이 고치지 않은 초안이면 새 전략의 초안으로 바꾼다
+            if (!action.trim() || action === oldDraft) { action = SM.recommend.ruleActionDraft(o.strategyId); actionInput.value = action; }
+            actionHint.textContent = hintText();
+            paintStrategy(); changed(true);
+            const btn = stratBox.querySelectorAll('button')[i];
+            if (btn) btn.focus();
+          }
+        }))));
     }
 
-    for (let i = 0; i < SEVEN; i++) list.appendChild(row(i));
+    // ---------- 2. 상황 ----------
+    const sitBox = el('div', { class: 'chip-row', role: 'group', 'aria-label': '언제(상황)' });
+    const customInput = el('input', {
+      type: 'text', maxlength: 40, 'aria-label': '상황 직접 쓰기', placeholder: '예) 점심 먹고 교실에 돌아오면',
+      onInput(e) { situation = e.target.value; changed(false); }
+    });
+    const customWrap = el('div', { class: 'stack', hidden: !custom }, customInput,
+      el('p', { class: 'muted', text: "'~하면'이나 '~전에'로 끝나게 써 봐." }));
+    if (custom) customInput.value = situation;
+    function paintSituations() {
+      SM.ui.clear(sitBox);
+      situations.forEach((s, i) => sitBox.appendChild(el('button', {
+        type: 'button', class: 'chip' + (!custom && situation === s.text ? ' chip-on' : ''),
+        'aria-pressed': String(!custom && situation === s.text), text: s.text,
+        onClick() { custom = false; situation = s.text; customWrap.hidden = true; paintSituations(); changed(true); sitBox.children[i].focus(); }
+      })));
+      sitBox.appendChild(el('button', {
+        type: 'button', class: 'chip' + (custom ? ' chip-on' : ''), 'aria-pressed': String(custom), text: '직접 쓰기',
+        onClick() {
+          if (!custom) { custom = true; situation = customInput.value; }
+          customWrap.hidden = false; paintSituations(); changed(true); customInput.focus();
+        }
+      }));
+    }
+
+    // ---------- 미리보기 ----------
+    const preview = el('p', { class: 'rule-big rule-preview', 'aria-live': 'polite' });
+    const warn = el('p', { class: 'field-warn', 'aria-live': 'polite' });
+    function paintPreview() {
+      const t = current();
+      preview.textContent = t || '상황과 행동을 채우면 문장이 보여.';
+      preview.classList.toggle('muted', !t);
+      const c = SM.recommend.checkRule(t);
+      warn.textContent = !t || c.ok ? '' : c.missing === 'when'
+        ? "상황이 '~하면'이나 '~전에'로 끝나야 해."
+        : '무엇을(행동) 할지도 적어 줄래?';
+    }
+
+    paintStrategy();
+    paintSituations();
+    paintPreview();
+    // 처음 들어와서 아직 문장이 없으면 초안을 바로 저장해 둔다(플래너에 바로 보이게)
+    if (!base && current()) persist();
 
     return {
       node: el('div', { class: 'stack' },
-        el('div', { class: 'card stack' },
-          el('h2', { text: '나만의 일곱 가지 전략', tabindex: '-1' }),
-          el('p', { text: '"나는 [언제] [무엇을] 한다" 문장 7개를 만들어 보자. 초안을 고쳐서 내 말로 바꿔도 돼.' }),
-          el('p', { class: 'muted', text: '언제(상황)와 무엇을(행동)이 모두 들어가야 해.' }),
-          el('p', { class: 'muted', text: '예) 나는 저녁 9시가 되면 영단어 카드 20개를 떠올려 본다.' })
-        ),
-        list,
-        el('div', { class: 'row' }, saved.node),
-        el('p', { class: 'muted', text: '이 문장들은 플래너 위쪽과 주간 점검에 보여 줄게.' }),
+        head(el('p', { class: 'muted', text: '예) 나는 저녁 9시가 되면 영단어 카드 20개를 떠올려 본다.' })),
+        el('section', { class: 'card stack' }, el('h3', { text: '1. 어떤 전략으로?' }), stratBox),
+        el('section', { class: 'card stack' }, el('h3', { text: '2. 언제(상황)' }), sitBox, customWrap),
+        el('section', { class: 'card stack' }, el('h3', null, el('label', { for: 'rule-action', text: '3. 무엇을(행동)' })), actionInput, actionHint),
+        el('section', { class: 'card stack rule-preview-card' },
+          el('h3', { text: '미리보기' }), preview, warn,
+          el('div', { class: 'row' }, saved.node),
+          el('p', { class: 'muted', text: '이 문장은 플래너 위쪽, 일간 체크, 주간 점검에 보여 줄게. 언제든 바꿀 수 있어.' })),
+        historyEl(plan),
         el('a', { href: '#/strategy', class: 'btn', text: '전략으로 돌아가기' })
       ),
       cleanup() {
@@ -487,11 +530,12 @@
       }
     };
   }
+
   SM.strategyView = { card: buildStrategyCard };
 
 
   if (typeof SM.route === 'function') {
     SM.route('#/strategy', { title: '맞춤 전략', render: strategyScreen });
-    SM.route('#/strategy/seven', { title: '나만의 일곱 가지 전략', tab: 'strategy', render: sevenScreen });
+    SM.route('#/strategy/seven', { title: '나만의 한 가지 전략', tab: 'strategy', render: myRuleScreen });
   }
 })(window.SM = window.SM || {});

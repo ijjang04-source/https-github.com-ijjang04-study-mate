@@ -261,6 +261,13 @@
     const t = (mw && mw.total) || {};
     const push = (r) => { if (out.length < MAX_RULES) out.push(r); };
 
+    // 0. 나만의 한 가지 전략: 지킨 날 5일 이상 칭찬, 2일 이하 상황 바꾸기 제안
+    const mr = checkin && checkin.myRule;
+    if (mr && String(mr.text || '').trim() && typeof mr.keptDays === 'number') {
+      if (mr.keptDays >= 5) push({ rule: 'myRuleGood', text: `나만의 한 가지 전략을 ${mr.keptDays}일이나 지켰어. 이제 습관이 되어 가고 있어!` });
+      else if (mr.keptDays <= 2) push({ rule: 'myRuleLow', text: `나만의 한 가지 전략을 ${mr.keptDays}일 지켰어. 상황을 더 자주 생기는 때로 바꿔 볼까?` });
+    }
+
     // 1. 계획이 벅참
     const b1 = scoreOf(checkin, 'b1');
     if (t.executionRate !== null && t.executionRate !== undefined && t.executionRate < 0.5 && b1 !== null && b1 <= 2) {
@@ -331,6 +338,18 @@
     return out;
   }
 
+  /**
+   * 주간 점검표의 C항목 → { text, status, keptDays } | null
+   * 제출 전이거나 문장이 없던 주는 지금 문장으로, 제출한 주는 그때 문장을 그대로 둔다.
+   * 같은 문장이면 고른 상태를 이어 받는다. 지킨 날은 늘 일간 체크에서 다시 센다.
+   */
+  function weekRule(prev, ruleText, keptDays, submitted) {
+    const p = prev && typeof prev === 'object' ? prev : null;
+    const text = submitted && p && p.text ? p.text : String(ruleText || '').trim();
+    if (!text) return null;
+    return { text, status: p && p.text === text ? (p.status || null) : null, keptDays: keptDays || 0 };
+  }
+
   function find(list, isoWeek) {
     return (Array.isArray(list) ? list : []).find((x) => x && x.isoWeek === isoWeek) || null;
   }
@@ -388,7 +407,7 @@
     return nw;
   }
 
-  SM.checkin = { upsert, find, nextWeek, applyNextChange, carryNextChange, isDue };
+  SM.checkin = { upsert, find, weekRule, nextWeek, applyNextChange, carryNextChange, isDue };
 })(window.SM = window.SM || {});
 
 // ---------- #/check 자기 점검 ----------
@@ -476,7 +495,7 @@
     ['b7', '모르는 부분을 구체적으로 찾아냈다.'],
     ['b8', '막혔을 때 선생님·친구에게 도움을 구했다.']
   ];
-  const SEVEN_STATUS = [['kept', '지켰다'], ['sometimes', '가끔'], ['missed', '못 지켰다']];
+  const RULE_STATUS = [['kept', '지켰다'], ['sometimes', '가끔'], ['missed', '못 지켰다']];
   const BLOCKER_LABEL = { phone: '휴대폰', sleepy: '졸림', noise: '소음', hard: '내용이 어려움', other: '기타' };
 
   function stampText(iso) {
@@ -501,23 +520,16 @@
     const short = (iso) => `${+iso.slice(5, 7)}/${+iso.slice(8)}`;
     const P = SM.metrics.pct;
 
-    // 점검표(이 주 것). 일곱 가지 전략은 지금 문장을 기준으로 상태를 붙인다.
+    // 점검표(이 주 것). 나만의 한 가지 전략은 지금 문장을 기준으로 상태를 붙인다.
     const saved = SM.checkin.find(loadCheckins(), wk);
     const entry = Object.assign({
-      isoWeek: wk, scores: {}, seven: [], results: {}, reflect: { good: '', bad: '', nextChange: '' },
+      isoWeek: wk, scores: {}, myRule: null, results: {}, reflect: { good: '', bad: '', nextChange: '' },
       submittedAt: null, updatedAt: null, editedAt: null
     }, saved ? JSON.parse(JSON.stringify(saved)) : {});
     entry.scores = entry.scores || {};
     entry.results = entry.results || {};
     entry.reflect = Object.assign({ good: '', bad: '', nextChange: '' }, entry.reflect || {});
-    const rules = ((plan && plan.sevenRules) || []).filter((r) => r && String(r.text || '').trim());
-    const oldSeven = Array.isArray(entry.seven) ? entry.seven : [];
-    if (!entry.submittedAt || !oldSeven.length) {
-      entry.seven = rules.map((r) => {
-        const prev = oldSeven.find((s) => s.text === r.text);
-        return { text: r.text, status: prev ? prev.status : null };
-      });
-    }
+    entry.myRule = SM.checkin.weekRule(entry.myRule, SM.planner.myRuleText(plan), SM.planner.myRuleKeptDays(wk), !!entry.submittedAt);
 
     const indicator = SM.ui.savedIndicator();
     let dirty = false;
@@ -583,24 +595,30 @@
       })
     );
 
-    // --- C. 일곱 가지 전략 ---
-    const secC = el('section', { class: 'card stack' },
-      el('h3', { text: 'C. 나만의 일곱 가지 전략 실천' }),
-      entry.seven.length
-        ? entry.seven.map((s, i) => {
-          const group = el('div', { class: 'chip-row', role: 'group', 'aria-label': s.text });
-          function paint() {
-            SM.ui.clear(group);
-            SEVEN_STATUS.forEach(([v, label], j) => group.appendChild(el('button', {
-              type: 'button', class: 'chip' + (s.status === v ? ' chip-on' : ''), 'aria-pressed': String(s.status === v), text: label,
-              onClick() { s.status = s.status === v ? null : v; changed(); paint(); group.children[j].focus(); }
-            })));
-          }
-          paint();
-          return el('div', { class: 'stack scale-item' }, el('p', { text: `${i + 1}. ${s.text}` }), group);
-        })
-        : el('p', null, '아직 일곱 가지 전략이 없어. ', el('a', { href: '#/strategy/seven', text: '만들러 가기' }))
-    );
+    // --- C. 나만의 한 가지 전략 ---
+    let secC;
+    if (entry.myRule) {
+      const r = entry.myRule;
+      const group = el('div', { class: 'chip-row', role: 'group', 'aria-label': '이번 주 나만의 한 가지 전략' });
+      const paint = () => {
+        SM.ui.clear(group);
+        RULE_STATUS.forEach(([v, label], j) => group.appendChild(el('button', {
+          type: 'button', class: 'chip' + (r.status === v ? ' chip-on' : ''), 'aria-pressed': String(r.status === v), text: label,
+          onClick() { r.status = r.status === v ? null : v; changed(); paint(); group.children[j].focus(); }
+        })));
+      };
+      paint();
+      secC = el('section', { class: 'card stack' },
+        el('h3', { text: 'C. 나만의 한 가지 전략 실천' }),
+        el('p', { class: 'rule-quote', text: r.text }),
+        el('p', { class: 'rule-kept', text: `이번 주 지킨 날: ${r.keptDays}일 / 7일` }),
+        el('p', { class: 'muted', text: '일간 플래너에서 체크한 날을 세었어.' }),
+        group);
+    } else {
+      secC = el('section', { class: 'card stack' },
+        el('h3', { text: 'C. 나만의 한 가지 전략 실천' }),
+        el('p', null, '아직 나만의 한 가지 전략이 없어. ', el('a', { href: '#/strategy/seven', text: '만들러 가기' })));
+    }
 
     // --- D. 학습 성과(선택) ---
     const subjects = [];

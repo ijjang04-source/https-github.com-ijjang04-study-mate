@@ -3,8 +3,9 @@
 
   // localStorage는 이 파일에서만 다룬다. 다른 파일은 항상 SM.store를 쓴다.
 
+  // 접두사의 v1은 키 이름 규칙이고, 데이터 모양 버전은 SCHEMA(meta.schema)다.
   const PREFIX = 'sm:v1:';
-  const SCHEMA = 1;
+  const SCHEMA = 2;
   const META_KEY = 'meta';
 
   /** 키 이름 헬퍼(접두사 제외) */
@@ -60,6 +61,87 @@
   }
 
   function isPlain(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
+
+  // ---------- 스키마 2: 여러 문장 전략(sevenRules) → 나만의 한 가지 전략(myRule) ----------
+
+  /** "나는 [상황] [행동]." → { situation, action } (상황은 '~면'·'~전에'로 끝남). 못 나누면 빈 문자열 */
+  function splitRuleText(text) {
+    const t = String(text || '').trim().replace(/^나는\s+/, '').replace(/[.。]+$/, '').trim();
+    const m = /^(.*?(?:면|전에))\s+(.+)$/.exec(t);
+    return m ? { situation: m[1].trim(), action: m[2].trim() } : { situation: '', action: '' };
+  }
+
+  function ruleFromOld(r, updatedAt) {
+    const text = String((r && r.text) || '').trim();
+    const parts = splitRuleText(text);
+    return {
+      text, situation: parts.situation, action: parts.action, subject: null,
+      strategyId: (r && r.strategyId) || null, updatedAt: updatedAt || null
+    };
+  }
+
+  /** plan 하나를 바꾼 새 객체. sevenRules가 없으면 같은 객체를 그대로 돌려준다(여러 번 해도 같음). */
+  function planToV2(plan) {
+    if (!isPlain(plan) || !Object.prototype.hasOwnProperty.call(plan, 'sevenRules')) return plan;
+    const out = Object.assign({}, plan);
+    const at = plan.updatedAt || null;
+    const rules = (Array.isArray(plan.sevenRules) ? plan.sevenRules : [])
+      .filter((r) => r && String(r.text || '').trim())
+      .map((r) => ruleFromOld(r, at));
+    const history = Array.isArray(plan.myRuleHistory) ? plan.myRuleHistory.slice() : [];
+    if (rules.length) {
+      // 이미 한 가지 전략이 있으면(새 데이터 위에 옛 백업) 옛 문장은 모두 기록으로
+      if (isPlain(plan.myRule) && plan.myRule.text) history.push(...rules);
+      else { out.myRule = rules[0]; history.push(...rules.slice(1)); }
+    }
+    out.myRuleHistory = history;
+    delete out.sevenRules;
+    return out;
+  }
+
+  /** 주간 점검표 한 주: seven [{text,status}] → myRule { text, status } */
+  function checkinToV2(entry) {
+    if (!isPlain(entry) || !Object.prototype.hasOwnProperty.call(entry, 'seven')) return entry;
+    const out = Object.assign({}, entry);
+    const first = (Array.isArray(entry.seven) ? entry.seven : []).find((s) => isPlain(s) && String(s.text || '').trim());
+    if (first && !isPlain(out.myRule)) out.myRule = { text: String(first.text).trim(), status: first.status || null };
+    delete out.seven;
+    return out;
+  }
+
+  /** 플래너 한 달: 주간 실행 의도 from 'seven' → 'myRule' */
+  function plannerToV2(data) {
+    if (!isPlain(data) || !isPlain(data.weeks)) return data;
+    let changed = false;
+    const weeks = {};
+    Object.keys(data.weeks).forEach((wk) => {
+      const w = data.weeks[wk];
+      if (isPlain(w) && Array.isArray(w.intentions) && w.intentions.some((x) => x && x.from === 'seven')) {
+        changed = true;
+        weeks[wk] = Object.assign({}, w, { intentions: w.intentions.map((x) => (x && x.from === 'seven' ? Object.assign({}, x, { from: 'myRule' }) : x)) });
+      } else weeks[wk] = w;
+    });
+    return changed ? Object.assign({}, data, { weeks }) : data;
+  }
+
+  /** api = { get, set, keys }. 바뀐 키 수를 돌려준다. */
+  function migrateV2(api) {
+    let n = 0;
+    const apply = (prefix, fn) => api.keys(prefix).forEach((k) => {
+      const before = api.get(k, null);
+      const after = fn(before);
+      if (after !== before) { api.set(k, after); n++; }
+    });
+    apply('plan:', planToV2);
+    apply('checkin:', (list) => {
+      if (!Array.isArray(list) || !list.some((e) => isPlain(e) && 'seven' in e)) return list;
+      return list.map(checkinToV2);
+    });
+    apply('planner:', plannerToV2);
+    return n;
+  }
+
+  SM.schema2 = { splitRuleText, planToV2, checkinToV2, plannerToV2, migrateV2 };
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
   /**
@@ -235,7 +317,8 @@
       if (!obj || typeof obj !== 'object' || !obj.data || typeof obj.data !== 'object') {
         throw new Error('백업 형식이 올바르지 않아요.');
       }
-      if (obj.version !== SCHEMA) {
+      // 예전 버전 백업은 받아서 지금 모양으로 바꾼다. 앱보다 새 버전은 거절.
+      if (typeof obj.version !== 'number' || obj.version < 1 || obj.version > SCHEMA) {
         throw new Error('지원하지 않는 백업 버전이에요: ' + obj.version);
       }
       const sid = obj.sid;
@@ -249,6 +332,9 @@
         if (!set(k, obj.data[k])) { result.failed++; return; }
         if (exists) result.overwritten++; else result.added++;
       });
+      for (let v = obj.version + 1; v <= target; v++) {
+        if (MIGRATIONS[v]) MIGRATIONS[v]({ get, set, remove, keys });
+      }
       return result;
     }
 
@@ -278,7 +364,8 @@
     // 예시(가짜 v0 → v1)는 tests/settings.test.js에 있다.
     const target = typeof options.schema === 'number' ? options.schema : SCHEMA;
     const MIGRATIONS = options.migrations || {
-      1: () => { /* 최초 버전: 할 일 없음 */ }
+      1: () => { /* 최초 버전: 할 일 없음 */ },
+      2: (api) => { migrateV2(api); }   // 여러 문장 전략 → 나만의 한 가지 전략
     };
 
     /**

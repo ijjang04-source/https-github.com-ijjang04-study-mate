@@ -91,7 +91,7 @@
     for (let w = o.weeks; w >= 1; w--) {
       const wk = D.isoWeek(D.addDays(o.today, -7 * w));
       checkins.push({
-        isoWeek: wk, scores: { b1: 3, b2: 4, b3: 2, b4: 3, b5: 4, b6: 3, b7: 2, b8: 4 }, seven: [true, false, true, true, false, true, true],
+        isoWeek: wk, scores: { b1: 3, b2: 4, b3: 2, b4: 3, b5: 4, b6: 3, b7: 2, b8: 4 }, myRule: { text: '나는 저녁 9시가 되면 영단어 카드를 떠올려 본다.', status: 'kept', keptDays: 5 },
         results: {}, reflect: { good: '꾸준히 했다', bad: '주말에 몰렸다', nextChange: '토요일엔 블록 하나만' },
         submittedAt: D.addDays(o.today, -7 * w + 6) + 'T12:00:00Z', subjectRates: { 수학: 0.6, 영어: 0.5 }
       });

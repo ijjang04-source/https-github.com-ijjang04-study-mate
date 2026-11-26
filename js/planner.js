@@ -8,7 +8,7 @@
   //   month: { goals: [문자열], events: [{ id, date, title, kind }], weekFocus: { '2026-W46': 문자열 },
   //            focusStrategies: [전략 id], woop: { wish, outcome, obstacle, plan }, public: false, woopSuggested },
   //   weeks: { '2026-W46': { ... } },     // 주의 월요일이 속한 달 키에 저장(monthKeyForWeek)
-  //   days:  { '2026-11-13': { blocks: [...] } }
+  //   days:  { '2026-11-13': { blocks: [...], myRuleDone: true|false } }  // myRuleDone: 나만의 한 가지 전략 지킴(없으면 미체크)
   // }
 
   const EVENT_KINDS = ['중간고사', '기말고사', '수행평가', '모의고사', '기타'];
@@ -85,6 +85,16 @@
     return { date: e.date, title, kind: e.kind, days, label: `${days === 0 ? 'D-DAY' : 'D-' + days} ${name}` };
   }
 
+  /** 일간 데이터 목록에서 myRuleDone === true인 날 수 */
+  function countKeptDays(days) {
+    return (days || []).filter((d) => d && d.myRuleDone === true).length;
+  }
+
+  /** plan의 나만의 한 가지 전략 문장(없으면 '') */
+  function myRuleText(plan) {
+    return plan && plan.myRule ? String(plan.myRule.text || '').trim() : '';
+  }
+
   // ---------- 저장(인스턴스) ----------
 
   function createPlanner(deps) {
@@ -128,6 +138,19 @@
       const data = load(mk);
       data.days[iso] = Object.assign({}, data.days[iso] || {}, { blocks: blocks || [] });
       return save(mk, data);
+    }
+    /** 그날 나만의 한 가지 전략을 지켰는지: true | false | null(지움). 블록은 그대로. */
+    function setMyRuleDone(iso, value) {
+      const mk = SM.date.monthKey(iso);
+      const data = load(mk);
+      const day = Object.assign({ blocks: [] }, data.days[iso] || {});
+      if (value === true || value === false) day.myRuleDone = value; else delete day.myRuleDone;
+      data.days[iso] = day;
+      return save(mk, data);
+    }
+    /** 그 주(월~일)에 '지켰어'로 체크한 날 수(0~7). 두 달에 걸친 주도 날짜마다 그 달에서 읽는다. */
+    function myRuleKeptDays(isoWeek) {
+      return countKeptDays(SM.date.weekDays(isoWeek).map((iso) => getDayData(iso)));
     }
 
     /** 저장된 모든 달의 일정에서 가장 가까운 시험 */
@@ -250,7 +273,7 @@
       return r;
     }
 
-    return { load, save, getWeek, saveWeek, getDay, saveDay, getDayData, saveDayData, nextDday, addWeeklyStrategy, drainQueue, applyChosen, replaceChosen };
+    return { load, save, getWeek, saveWeek, getDay, saveDay, getDayData, saveDayData, setMyRuleDone, myRuleKeptDays, nextDday, addWeeklyStrategy, drainQueue, applyChosen, replaceChosen };
   }
 
   const instance = createPlanner({
@@ -320,14 +343,14 @@
     );
   }
 
-  /** 상단 띠: 과목마다 고른 전략 칩(누르면 하는 법 펼침) + 일곱 가지 전략 접기 */
+  /** 상단 띠: 과목마다 고른 전략 칩(누르면 하는 법 펼침) + 나만의 한 가지 전략 한 문장 */
   function stripEl(plan) {
     const el = SM.ui.el;
     const chosen = chosenOf(plan);
     const order = Object.keys((plan && plan.strategies) || {});
     Object.keys(chosen).forEach((sub) => { if (order.indexOf(sub) === -1) order.push(sub); });
     const core = order.filter((sub) => chosen[sub]).map((sub) => ({ subject: sub, id: chosen[sub] }));
-    const rules = ((plan && plan.sevenRules) || []).filter((r) => r && String(r.text || '').trim());
+    const rule = myRuleText(plan);
     const detail = el('div', { class: 'strip-detail card stack', id: 'strip-detail', hidden: true });
     let openKey = null;
     const buttons = [];
@@ -365,12 +388,12 @@
         : el('div', { class: 'row strip-empty' },
           el('p', { class: 'grow', text: '전략 탭에서 과목마다 하나를 골라 줘.' }),
           el('a', { href: '#/strategy', class: 'btn', text: '전략 탭' })),
-      el('details', { class: 'seven-fold' },
-        el('summary', { text: `나만의 일곱 가지 전략${rules.length ? ` (${rules.length})` : ''}` }),
-        rules.length
-          ? el('ol', null, rules.map((r) => el('li', { text: r.text })))
-          : el('p', null, '아직 없어. ', el('a', { href: '#/strategy/seven', text: '만들러 가기' }))
-      )
+      rule
+        ? el('div', { class: 'rule-strip stack' },
+          el('p', { class: 'muted rule-strip-label', text: '나만의 한 가지 전략' }),
+          el('p', { class: 'rule-big', text: rule }),
+          el('a', { href: '#/strategy/seven', class: 'link-small', text: '문장 바꾸기' }))
+        : el('a', { href: '#/strategy/seven', class: 'btn', text: '나만의 한 가지 전략 만들기' })
     );
   }
 
@@ -491,7 +514,7 @@
         });
         input.value = g;
         goalsBox.appendChild(el('div', { class: 'row goal-row' },
-          el('span', { class: 'seven-num', text: String(i + 1) }),
+          el('span', { class: 'num-badge', text: String(i + 1) }),
           input,
           el('button', {
             type: 'button', class: 'btn btn-ghost', text: '삭제', 'aria-label': `목표 ${i + 1} 삭제`,
@@ -717,7 +740,7 @@
   //   goals: [{ subject, text }], extraSubjects: [과목],
   //   strategies: { 과목: [id, id] },           // 과목당 1~2개
   //   grid: { mon: ['수학:interleave', ...], ... },
-  //   intentions: [{ text, from: 'lastWeek'|'seven'|null }],  // 1~3개
+  //   intentions: [{ text, from: 'lastWeek'|'myRule'|null }],  // 1~3개
   //   obstacle: '', public: false, publicRate: false
   //   (16단계) review.nextChange: '다음 주에 바꿀 한 가지'
   // }
@@ -1268,25 +1291,26 @@
         ));
       });
       const full = week.intentions.length >= MAX_INTENTIONS;
-      const rules = ((plan && plan.sevenRules) || []).filter((r) => r && String(r.text || '').trim());
+      const rule = myRuleText(plan);
       intentSec.appendChild(el('button', {
         type: 'button', class: 'btn', text: '+ 실행 의도 추가', disabled: full,
         onClick() { week.intentions.push({ text: '', from: null }); flush(); renderIntentions(); const inputs = intentSec.querySelectorAll('input'); inputs[inputs.length - 1].focus(); }
       }));
       intentSec.appendChild(el('details', null,
-        el('summary', { text: '나만의 일곱 가지 전략에서 불러오기' }),
-        rules.length
-          ? el('ul', { class: 'pick-list' }, rules.map((r) => el('li', null, el('button', {
-            type: 'button', class: 'btn btn-ghost pick', text: ruleToIntention(r.text),
+        el('summary', { text: '나만의 한 가지 전략에서 불러오기' }),
+        rule
+          ? el('ul', { class: 'pick-list' }, el('li', null, el('button', {
+            type: 'button', class: 'btn btn-ghost pick', text: ruleToIntention(rule),
             onClick() {
-              const text = ruleToIntention(r.text);
+              const text = ruleToIntention(rule);
+              if (week.intentions.some((x) => x.text.trim() === text)) { SM.ui.toast('이미 실행 의도에 있어.'); return; }
               const empty = week.intentions.find((x) => !x.text.trim() && x.from !== 'lastWeek');
-              if (empty) { empty.text = text; empty.from = 'seven'; }
+              if (empty) { empty.text = text; empty.from = 'myRule'; }
               else if (week.intentions.length >= MAX_INTENTIONS) { SM.ui.toast('실행 의도는 3개까지야.'); return; }
-              else week.intentions.push({ text, from: 'seven' });
+              else week.intentions.push({ text, from: 'myRule' });
               flush(); renderIntentions();
             }
-          }))))
+          })))
           : el('p', null, '아직 없어. ', el('a', { href: '#/strategy/seven', text: '만들러 가기' }))
       ));
     }
@@ -1839,7 +1863,32 @@
 
     renderList();
 
+    // --- 나만의 한 가지 전략 지킴 체크(오늘·지난날만) ---
+    const rule = myRuleText(plan);
+    let ruleCheck = null;
+    if (rule && iso <= today) {
+      const question = iso === today ? '오늘 나만의 한 가지 전략을 지켰어?' : '이날 나만의 한 가지 전략을 지켰어?';
+      const group = el('div', { class: 'chip-row', role: 'group', 'aria-label': question });
+      const paintRule = () => {
+        const v = instance.getDayData(iso).myRuleDone;
+        SM.ui.clear(group);
+        [[true, '예'], [false, '아니오']].forEach(([val, label], j) => group.appendChild(el('button', {
+          type: 'button', class: 'chip' + (v === val ? ' chip-on' : ''), 'aria-pressed': String(v === val), text: label,
+          onClick() {
+            instance.setMyRuleDone(iso, v === val ? null : val);
+            saved.set('saved'); paintRule(); group.children[j].focus();
+          }
+        })));
+      };
+      paintRule();
+      ruleCheck = el('section', { class: 'card stack rule-check' },
+        el('h3', { text: question }),
+        el('p', { class: 'rule-quote', text: rule }),
+        group);
+    }
+
     const root = el('div', { class: 'stack' },
+      ruleCheck,
       el('div', { class: 'row' },
         el('h3', { class: 'month-title grow', text: `${SM.date.formatKorean(iso)}${iso === today ? ' · 오늘' : ''}` }),
         el('a', { href: `#/planner/week?w=${wk}`, class: 'link-small', text: '이번 주 보기' })
@@ -1864,7 +1913,7 @@
     copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek, carryInto,
     MAX_BLOCKS, UNITS, PLACES, WITH, MODES, BLOCKERS, newBlock, addBlock, moveBlock, prefillDay, suggestApplied,
     copyPlan, newDone, envHints, doneSummary, minutesText,
-    chosenOf, chooseStrategy, dropStaleChosen, seedChosenIntoWeek, seedMonthFocus, autoFillStrategy, styleWayOf
+    chosenOf, chooseStrategy, dropStaleChosen, countKeptDays, myRuleText, seedChosenIntoWeek, seedMonthFocus, autoFillStrategy, styleWayOf
   });
 
   if (typeof SM.route === 'function') {

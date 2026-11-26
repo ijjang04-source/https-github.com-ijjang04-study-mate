@@ -186,114 +186,99 @@
     return strong ? strong.key : poles.length ? poles[0].key : null;
   }
 
-  // ---------- 나만의 일곱 가지 전략 ----------
+  // ---------- 나만의 한 가지 전략 ----------
+  // "나는 [상황] [행동]." 한 문장. 상황은 칩(시간대 칩이 있으면 맨 앞) 또는 직접 쓰기,
+  // 행동은 고른 전략의 '하는 법' 첫 단계를 '~한다' 꼴로 바꾼 초안에서 시작한다.
 
-  const SEVEN = 7;
-  const MAX_STRATEGIES = 6;
-  const MAX_HABITS = 2;
+  const RULE_SITUATION_KEYS = ['home', 'newUnit', 'beforeSolve', 'wrong', 'finish', 'exam3'];
 
   function chronoOf(result) {
     const p = SM.score.poles(result).find((x) => x.key.indexOf('chrono:') === 0);
     return p ? p.key.split(':')[1] : null;
   }
 
-  function makeText(when, act, subject) {
-    return `나는 ${when} ${act.replace(/\{subject\}/g, subject || '').replace(/\s+/g, ' ').trim()}.`;
+  /** 상황 칩 → [{ key, text }]. 아침형·저녁형 결과가 있으면 그 시간대 상황이 맨 앞. */
+  function ruleSituations(result) {
+    const list = RULE_SITUATION_KEYS.map((k) => ({ key: k, text: SM.data.ruleSituations[k] }));
+    const chrono = result ? chronoOf(result) : null;
+    if (chrono && SM.data.ruleTimes[chrono]) list.unshift({ key: 'time', text: SM.data.ruleTimes[chrono][0] });
+    return list;
+  }
+
+  // 반말 명령(하는 법) 끝 낱말 → '~한다' 꼴. 표에 없으면 '~해'만 규칙으로 바꾸고 나머지는 그대로(학생이 고친다).
+  const PLAIN_END = {
+    봐: '본다', 뽑아: '뽑는다', 찾아: '찾는다', 잡아: '잡는다', 골라: '고른다', 그려: '그린다', 옮겨: '옮긴다',
+    떠올려: '떠올린다', 나눠: '나눈다', 써: '쓴다', 만들어: '만든다', 적어: '적는다', 읽어: '읽는다', 덮어: '덮는다', 풀어: '푼다'
+  };
+
+  /** "외울 항목을 쭉 적어 봐." → "외울 항목을 쭉 적어 본다" */
+  function toPlain(sentence) {
+    const t = String(sentence || '').trim().replace(/[.。!]+$/, '').trim();
+    if (!t) return '';
+    const words = t.split(/\s+/);
+    const last = words[words.length - 1];
+    if (PLAIN_END[last]) words[words.length - 1] = PLAIN_END[last];
+    else if (/해$/.test(last)) words[words.length - 1] = last.slice(0, -1) + '한다';
+    return words.join(' ');
+  }
+
+  /** 고른 전략의 '하는 법' 첫 단계로 만든 행동 초안 */
+  function ruleActionDraft(strategyId) {
+    const s = SM.data.strategies.find((x) => x.id === strategyId);
+    return s && s.howTo && s.howTo.length ? toPlain(s.howTo[0]) : '';
   }
 
   /**
-   * 후보 목록(순서 고정).
-   * 전략: 과목별 plan 전략(없으면 추천 상위 3) → 이어지는 순위, 과목을 번갈아 가며. 같은 전략은 한 번만.
-   * 습관: strong 극 우선 → mild 극.
-   * → [{ kind:'strategy'|'habit', id, subject, when(키), act, name }]
+   * 미리보기 문장. 행동이 '~다'로 끝나면 "나는 [상황] [행동]." 아니면 "나는 [상황] [행동]을(를) 한다."
+   * 상황이나 행동이 비면 ''.
    */
-  function sevenPool(result, plan) {
-    const parts = SM.data.sevenRuleParts;
-    const subjects = (result && result.subjects) || [];
-    const lists = subjects.map((s) => {
-      const picked = (plan && plan.strategies && plan.strategies[s]) || forSubject(result, s).map((x) => x.id);
-      const rest = rank(result, s).map((x) => x.id).filter((id) => picked.indexOf(id) === -1);
-      return { subject: s, ids: picked.concat(rest) };
-    });
-    const strategies = [];
-    const seen = {};
-    const longest = Math.max(0, ...lists.map((l) => l.ids.length));
-    for (let i = 0; i < longest; i++) {
-      lists.forEach((l) => {
-        const id = l.ids[i];
-        if (!id || seen[id] || !parts.strategies[id]) return;
-        seen[id] = true;
-        const st = SM.data.strategies.find((x) => x.id === id);
-        strategies.push({ kind: 'strategy', id, subject: l.subject, when: parts.strategies[id].when, act: parts.strategies[id].act, name: st.name });
-      });
-    }
-
-    const poles = SM.score.poles(result);
-    const ordered = poles.filter((p) => p.band === 'strong').concat(poles.filter((p) => p.band !== 'strong'));
-    const habitList = [];
-    ordered.forEach((p) => {
-      SM.data.habits.forEach((h) => {
-        if (h.poles.indexOf(p.key) !== -1 && habitList.indexOf(h) === -1 && parts.habits[h.id]) habitList.push(h);
-      });
-    });
-    const habitItems = habitList.map((h) => ({ kind: 'habit', id: h.id, subject: null, when: parts.habits[h.id].when, act: parts.habits[h.id].act, name: h.name }));
-    return { strategies, habits: habitItems };
+  function ruleText(situation, action) {
+    const s = String(situation || '').trim().replace(/[,.]+$/, '');
+    const a = String(action || '').trim().replace(/[.。]+$/, '').trim();
+    if (!s || !a) return '';
+    if (/다$/.test(a)) return `나는 ${s} ${a}.`;
+    const josa = SM.planner && SM.planner.objectJosa ? SM.planner.objectJosa(a) : a + '을(를)';
+    return `나는 ${s} ${josa} 한다.`;
   }
 
-  /** 후보 하나를 문장으로. timeWhen이 있으면 상황을 그 시간 표현으로 바꾼다. */
-  function draftOf(item, timeWhen) {
-    const when = timeWhen || SM.data.ruleSituations[item.when] || '';
-    return {
-      text: makeText(when, item.act, item.subject),
-      strategyId: item.kind === 'strategy' ? item.id : null,
-      habitId: item.kind === 'habit' ? item.id : null,
-      name: item.name
+  /** 2단계(전략 탭)에서 과목마다 고른 전략 → [{ subject, strategyId }] (추천 과목 순서) */
+  function ruleStrategyOptions(plan) {
+    const chosen = (plan && plan.chosen) || {};
+    const order = Object.keys((plan && plan.strategies) || {});
+    Object.keys(chosen).forEach((s) => { if (order.indexOf(s) === -1) order.push(s); });
+    return order
+      .filter((s) => chosen[s] && SM.data.strategies.some((x) => x.id === chosen[s]))
+      .map((s) => ({ subject: s, strategyId: chosen[s] }));
+  }
+
+  /**
+   * 한 가지 전략 저장(자동 저장마다 불러도 된다). plan을 바꾸지 않고 새 plan을 돌려준다.
+   * base: 이 화면을 열 때의 myRule(없으면 null). 문장이 base와 달라지면 base를 myRuleHistory에
+   * 한 번만 남기고, 다시 base 문장으로 되돌리면 남긴 기록을 뺀다.
+   */
+  function saveMyRule(plan, rule, base, nowIso) {
+    const p = Object.assign({}, plan || {});
+    const next = {
+      text: String(rule.text || '').trim(),
+      situation: String(rule.situation || '').trim(),
+      action: String(rule.action || '').trim(),
+      subject: rule.subject || null,
+      strategyId: rule.strategyId || null,
+      updatedAt: nowIso || new Date().toISOString()
     };
-  }
-
-  /**
-   * 초안 7개 이하: 보완 습관 최대 2개 + 전략 최대 6개(합 7 이하). 중복 없음.
-   * chrono 극이 있으면 '공부를 시작하는 상황(home)' 문장을 그 시간대로 바꾼다(없으면 첫 문장).
-   */
-  function sevenDrafts(result, plan) {
-    const pool = sevenPool(result, plan);
-    const habitsPicked = pool.habits.slice(0, MAX_HABITS);
-    const stratPicked = pool.strategies.slice(0, Math.min(MAX_STRATEGIES, SEVEN - habitsPicked.length));
-    const items = stratPicked.concat(habitsPicked);
-
-    const chrono = chronoOf(result);
-    const times = chrono ? SM.data.ruleTimes[chrono].slice() : [];
-    let timeTargets = [];
-    if (times.length) {
-      timeTargets = items.map((it, i) => (it.when === 'home' ? i : -1)).filter((i) => i !== -1).slice(0, times.length);
-      if (!timeTargets.length && items.length) timeTargets = [0];
+    const b = base && String(base.text || '').trim() ? base : null;
+    const history = Array.isArray(p.myRuleHistory) ? p.myRuleHistory.slice() : [];
+    const last = history[history.length - 1];
+    const baseKept = !!(b && last && last.text === b.text && last.updatedAt === b.updatedAt);
+    if (b && next.text !== b.text.trim()) {
+      if (!baseKept) history.push(b);
+    } else if (b) {
+      if (baseKept) history.pop();
+      next.updatedAt = b.updatedAt || next.updatedAt;   // 문장이 그대로면 정한 날짜도 그대로
     }
-    return items.map((it, i) => {
-      const t = timeTargets.indexOf(i);
-      return draftOf(it, t !== -1 ? times[t] : null);
-    });
-  }
-
-  /** '다시 만들기': 지금 쓰고 있지 않은 다음 후보로 만든 초안. 없으면 null. */
-  function nextDraft(result, plan, rules, idx) {
-    const pool = sevenPool(result, plan);
-    const all = pool.strategies.concat(pool.habits);
-    const used = {};
-    (rules || []).forEach((r, i) => {
-      if (i === idx || !r) return;
-      if (r.strategyId) used['s:' + r.strategyId] = true;
-      if (r.habitId) used['h:' + r.habitId] = true;
-    });
-    const cur = rules && rules[idx];
-    const curKey = cur ? (cur.strategyId ? 's:' + cur.strategyId : cur.habitId ? 'h:' + cur.habitId : null) : null;
-    const keyOf = (it) => (it.kind === 'strategy' ? 's:' : 'h:') + it.id;
-    const free = all.filter((it) => !used[keyOf(it)]);
-    if (!free.length) return null;
-    // 지금 것 다음 후보부터 돌아가며 고른다.
-    const at = free.findIndex((it) => keyOf(it) === curKey);
-    const pick = free[(at + 1) % free.length];
-    if (keyOf(pick) === curKey) return null;
-    return draftOf(pick, null);
+    p.myRule = next;
+    p.myRuleHistory = history;
+    return p;
   }
 
   /** 문장 형식 점검: '~면'(또는 '~전에') 조건절과 그 뒤 행동이 있는지. 저장은 막지 않는다. */
@@ -376,7 +361,7 @@
   SM.recommend = {
     forSubject, rank, explain, alternative, habits, environment, cardPole,
     weaknessMatch, styleFit, poleLean, candidates, CORE,
-    sevenPool, sevenDrafts, nextDraft, checkRule,
+    ruleSituations, toPlain, ruleActionDraft, ruleText, ruleStrategyOptions, saveMyRule, checkRule,
     subjectRates, shouldRetest, RETEST_DAYS
   };
 })(window.SM = window.SM || {});
