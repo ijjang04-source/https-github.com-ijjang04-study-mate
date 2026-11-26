@@ -156,16 +156,8 @@
 
     /** 고른 전략이 추천 3개 안에 없으면(재진단·다른 전략 보기) 그 과목 선택을 비운다 → 비운 과목 목록 */
     function dropStaleChosen() {
-      const gone = [];
-      Object.keys(plan.chosen || {}).forEach((sub) => {
-        const ids = (plan.strategies && plan.strategies[sub]) || [];
-        if (ids.indexOf(plan.chosen[sub]) === -1) gone.push(sub);
-      });
-      if (!gone.length) return gone;
-      plan.chosen = Object.assign({}, plan.chosen);
-      plan.chosenAt = Object.assign({}, plan.chosenAt);
-      gone.forEach((sub) => { delete plan.chosen[sub]; delete plan.chosenAt[sub]; });
-      save();
+      const gone = SM.planner.dropStaleChosen(plan);
+      if (gone.length) save();
       return gone;
     }
     dropStaleChosen();
@@ -335,13 +327,17 @@
     if (askChange) {
       setTimeout(async () => {
         const yes = await SM.ui.confirmDialog('추천이 바뀌었어. 새 전략으로 바꿀까?', { okText: '바꿀래', cancelText: '그대로 둘래' });
+        let gone = [];
         if (yes) {
           plan = Object.assign({}, plan, fresh, { basedOn: id, confirmed: false, swaps: {} });
+          // 새 추천 3개에 없는 예전 선택은 비운다(과목마다 3개 중 하나)
+          gone = SM.planner.dropStaleChosen(plan);
         } else {
           plan.basedOn = id;
         }
         save();
         render();
+        if (gone.length) SM.ui.toast(`추천이 바뀌어서 ${gone.join('·')} 전략을 다시 골라 줘.`);
       }, 0);
     }
 

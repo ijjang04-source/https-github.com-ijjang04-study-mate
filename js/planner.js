@@ -793,6 +793,21 @@
     return { ok: true, prev, changed: true };
   }
 
+  /** 고른 전략이 그 과목 추천 3개 안에 없으면(재진단·다른 전략 보기) 선택을 비운다(plan을 바꾼다) → 비운 과목 목록 */
+  function dropStaleChosen(plan) {
+    const gone = [];
+    if (!plan || !plan.chosen) return gone;
+    Object.keys(plan.chosen).forEach((sub) => {
+      const ids = (plan.strategies && plan.strategies[sub]) || [];
+      if (ids.indexOf(plan.chosen[sub]) === -1) gone.push(sub);
+    });
+    if (!gone.length) return gone;
+    plan.chosen = Object.assign({}, plan.chosen);
+    plan.chosenAt = Object.assign({}, plan.chosenAt);
+    gone.forEach((sub) => { delete plan.chosen[sub]; delete plan.chosenAt[sub]; });
+    return gone;
+  }
+
   /**
    * 주간 '이번 주 적용 전략'에 고른 전략을 맨 앞에 넣는다. 한 번 넣은 것(week.autoChosen)은 학생이 빼도 다시 넣지 않는다.
    * 과목 칸이 가득(2개)이면 마지막 것을 뺀다(배치표는 그대로). → 바뀌었으면 true
@@ -1849,7 +1864,7 @@
     copyFromLastWeek, blockSummary, ruleToIntention, strategyChoices, abbr, objectJosa, nextChangeOf, prevWeek, carryInto,
     MAX_BLOCKS, UNITS, PLACES, WITH, MODES, BLOCKERS, newBlock, addBlock, moveBlock, prefillDay, suggestApplied,
     copyPlan, newDone, envHints, doneSummary, minutesText,
-    chosenOf, chooseStrategy, seedChosenIntoWeek, seedMonthFocus, autoFillStrategy, styleWayOf
+    chosenOf, chooseStrategy, dropStaleChosen, seedChosenIntoWeek, seedMonthFocus, autoFillStrategy, styleWayOf
   });
 
   if (typeof SM.route === 'function') {

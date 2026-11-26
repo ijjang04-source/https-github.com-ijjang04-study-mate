@@ -60,6 +60,17 @@
     assert.deepEqual(P.chosenOf({ chosen: { 수학: 'interleave', 영어: '없는전략' } }), { 수학: 'interleave' });
   });
 
+  test('chosen: 추천 3개가 바뀌면(재진단) 3개 밖으로 밀려난 선택만 비움', () => {
+    const p = plan();
+    P.chooseStrategy(p, '수학', 'interleave', TODAY);
+    P.chooseStrategy(p, '영어', 'spacing', TODAY);
+    assert.deepEqual(P.dropStaleChosen(p), [], '그대로면 아무것도 안 비움');
+    p.strategies = Object.assign({}, p.strategies, { 수학: ['retrieval', 'errorLog', 'workedExample'] });
+    assert.deepEqual(P.dropStaleChosen(p), ['수학']);
+    assert.deepEqual([p.chosen, p.chosenAt], [{ 영어: 'spacing' }, { 영어: TODAY }]);
+    assert.deepEqual(P.dropStaleChosen({ strategies: {} }), [], '예전 데이터(chosen 없음)');
+  });
+
   // ---------- 플래너에 보이기 ----------
 
   test('chosen: 주간 적용 전략에 고른 전략이 맨 앞에, 학생이 빼면 다시 넣지 않음', () => {
