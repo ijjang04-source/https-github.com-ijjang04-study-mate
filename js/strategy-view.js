@@ -21,10 +21,9 @@
     return Array.isArray(list) && list.length ? { list, latest: list[list.length - 1] } : null;
   }
 
-  /** 결과가 바뀌었는지 판단할 식별자 */
+  /** 결과가 바뀌었는지 판단할 식별자(결과 id 기준이라 지난 기록을 지워도 그대로) */
   function resultId(list) {
-    const r = list[list.length - 1];
-    return `${list.length}:${r.takenAt}:${r.extended ? 1 : 0}`;
+    return SM.schema3.resultKey(list);
   }
 
   function freshPlan(latest) {

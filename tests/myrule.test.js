@@ -6,6 +6,7 @@
   const R = SM.recommend;
   const S2 = SM.schema2;
   const SID = 'SM01-2-3-15';
+  const LATEST = SM.store.SCHEMA;   // 마이그레이션은 늘 최신 스키마까지 올린다
 
   function fakeStorage() {
     const map = new Map();
@@ -52,8 +53,8 @@
 
   test('myRule 마이그레이션: sevenRules 7개 → myRule 1개 + history 6개, sevenRules 삭제', () => {
     const store = SM.createStore(() => v1Backend());
-    assert.equal(store.migrate(), 2);
-    assert.deepEqual(store.get('meta'), { schema: 2 });
+    assert.equal(store.migrate(), LATEST);
+    assert.deepEqual(store.get('meta'), { schema: LATEST });
     const plan = store.get('plan:' + SID);
     assert.equal('sevenRules' in plan, false);
     assert.equal(plan.myRule.text, SEVEN_OLD[0].text, '비어 있지 않은 첫 문장');
@@ -70,11 +71,11 @@
     store.migrate();
     const snap = () => ['plan:', 'checkin:', 'planner:'].map((p) => JSON.stringify(store.keys(p).map((k) => store.get(k))));
     const once = snap();
-    assert.equal(store.migrate(), 2, 'meta가 2면 다시 돌지 않음');
+    assert.equal(store.migrate(), LATEST, 'meta가 최신이면 다시 돌지 않음');
     assert.deepEqual(snap(), once);
     backend.removeItem('sm:v1:meta');
     const again = SM.createStore(() => backend);
-    assert.equal(again.migrate(), 2);
+    assert.equal(again.migrate(), LATEST);
     assert.deepEqual(['plan:', 'checkin:', 'planner:'].map((p) => JSON.stringify(again.keys(p).map((k) => again.get(k)))), once);
     assert.equal(S2.migrateV2(again), 0, '바꿀 것이 없음');
   });
@@ -108,7 +109,7 @@
     assert.equal(r.added, 1);
     const plan = store.get('plan:' + SID);
     assert.deepEqual([plan.myRule.text, plan.myRuleHistory.length, 'sevenRules' in plan], [SEVEN_OLD[0].text, 1, false]);
-    assert.throws(() => store.importAll({ version: 3, sid: SID, data: {} }));
+    assert.throws(() => store.importAll({ version: LATEST + 1, sid: SID, data: {} }));
     assert.throws(() => store.importAll({ version: 0, sid: SID, data: {} }));
   });
 

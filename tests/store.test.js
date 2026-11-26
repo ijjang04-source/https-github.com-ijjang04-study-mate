@@ -111,7 +111,7 @@
     a.set(K.session(), { sid: SID });
 
     const dump = a.exportAll(SID);
-    assert.equal(dump.version, 2);
+    assert.equal(dump.version, a.SCHEMA);
     assert.equal(dump.sid, SID);
     assert.ok(typeof dump.exportedAt === 'string');
     assert.deepEqual(Object.keys(dump.data).sort(), [
@@ -169,10 +169,10 @@
     assert.equal(store.set('a', 1), true);
   });
 
-  test('store: init/migrate가 meta { schema: 2 }를 기록', () => {
+  test('store: init/migrate가 meta { schema: 최신 }을 기록', () => {
     const { store } = newStore();
     assert.deepEqual(store.init(), { isPersistent: true });
-    assert.deepEqual(store.get('meta'), { schema: 2 });
-    assert.equal(store.migrate(), 2);
+    assert.deepEqual(store.get('meta'), { schema: store.SCHEMA });
+    assert.equal(store.migrate(), store.SCHEMA);
   });
 })(window.SM);

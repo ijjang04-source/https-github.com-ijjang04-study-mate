@@ -622,6 +622,19 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 
 .disclaimer { background: var(--accent-weak); margin: 0; }
 
+/* ---------- 결과 기록 ---------- */
+
+.legend-now { border: 2px solid var(--accent); background: var(--accent); }
+.history-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--gap); }
+.history-item { padding: var(--gap) calc(var(--gap) * 1.5); border: 1px solid var(--line); border-radius: var(--radius); }
+.history-item p { margin: 0; }
+.compare-pick select { min-height: 44px; font: inherit; max-width: 100%; }
+.compare-row { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.compare-row:last-child { border-bottom: 0; }
+.compare-text { margin: 0; }
+.spark h4 { margin: 0; font-size: 16px; }
+.spark-canvas { display: block; width: 100%; }
+
 .retest-due { border: 2px solid var(--accent); }
 
 /* ---------- 전략 ---------- */

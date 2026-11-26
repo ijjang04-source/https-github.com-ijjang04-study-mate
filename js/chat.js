@@ -524,6 +524,21 @@
           { say: '10분짜리 작은 블록부터 해 볼까?' },
           { choices: [{ label: '10분 블록 만들기', action: 'smallBlock' }, { label: '오늘은 쉴래', next: 'rest' }] }
         ];
+      case 'history':
+        if (!latest) {
+          return [{ say: '아직 진단 결과가 없어. 진단을 하면 결과가 기록으로 쌓여.' }, { choices: [{ label: '진단 시작하기', go: '#/test' }] }];
+        }
+        return [{
+          card: {
+            title: '결과 기록',
+            lines: results.length > 1
+              ? [`지금까지 진단을 ${results.length}번 했어.`, '지난 결과와 차원별로 비교해 볼 수 있어.']
+              : ['아직 결과가 하나야.', '4주쯤 뒤에 다시 검사하면 여기서 비교할 수 있어.'],
+            actions: results.length > 1
+              ? [{ label: '지난번과 비교하기', go: '#/result/history?compare=1' }, { label: '결과 기록 보기', go: '#/result/history' }]
+              : [{ label: '결과 기록 보기', go: '#/result/history' }]
+          }
+        }];
       case 'test':
         if (!latest) {
           return [{ say: '아직 진단을 안 했어. 10분 정도면 끝나.' }, { choices: [{ label: '진단 시작하기', go: '#/test' }] }];

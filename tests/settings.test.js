@@ -144,7 +144,7 @@
     assert.equal(S.previewBackup('{oops', A).ok, false);
     assert.equal(S.previewBackup('{"a":1}', A).ok, false);
     assert.equal(S.previewBackup(json, B).error, '지금 입장한 학생의 백업이 아니에요.');
-    assert.ok(/버전/.test(S.previewBackup(json.replace('"version":2', '"version":9'), A).error));
+    assert.ok(/버전/.test(S.previewBackup(json.replace('"version":' + SM.store.SCHEMA, '"version":99'), A).error));
     // 백업에 다른 학생 키를 억지로 넣어도 되돌릴 때 건너뛴다
     const obj = JSON.parse(json);
     obj.data[SM.keys.plan(B)] = { hacked: true };

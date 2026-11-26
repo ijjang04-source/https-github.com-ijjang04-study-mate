@@ -357,8 +357,12 @@
   function finish(progress) {
     const p = me();
     if (!p) return;
-    const result = scoreBasic(progress.answers || {}, progress.subjects || []);
-    SM.store.update(SM.keys.results(p.sid), (list) => (Array.isArray(list) ? list : []).concat([result]), []);
+    const scored = scoreBasic(progress.answers || {}, progress.subjects || []);
+    // 덮어쓰지 않고 배열 끝에 쌓는다. 결과마다 id·kind(기본)
+    SM.store.update(SM.keys.results(p.sid), (list) => {
+      const arr = Array.isArray(list) ? list : [];
+      return arr.concat([Object.assign({ id: SM.schema3.nextResultId(arr, scored.takenAt), kind: 'basic' }, scored)]);
+    }, []);
     SM.store.remove(SM.keys.testProgress(p.sid));
     if (SM.chat && typeof SM.chat.notify === 'function') SM.chat.notify('학습 스타일 진단을 마쳤어. 결과를 정리해 뒀어.');
     location.hash = '#/result';
@@ -371,7 +375,8 @@
     const ext = scoreExtended(progress.answers || {});
     SM.store.update(SM.keys.results(p.sid), (list) => {
       const arr = Array.isArray(list) ? list.slice() : [];
-      if (arr.length) arr[arr.length - 1] = Object.assign({}, arr[arr.length - 1], { extended: ext });
+      // 심화는 따로 쌓지 않고 가장 최근 기본 결과에 붙인다(기록 목록에 '심화 포함')
+      if (arr.length) arr[arr.length - 1] = Object.assign({}, arr[arr.length - 1], { extended: ext, kind: 'deep' });
       return arr;
     }, []);
     SM.store.remove(SM.keys.testProgressDeep(p.sid));
@@ -704,6 +709,26 @@
     return '지난 검사와 비교';
   }
 
+  /** '2026-11-13' → '11월 13일' */
+  function monthDay(iso) {
+    const m = /^\d{4}-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m ? `${+m[1]}월 ${+m[2]}일` : String(iso || '');
+  }
+
+  /** #/result?id=… 의 id */
+  function viewId() {
+    const m = /[?&]id=([^&]+)/.exec(String(location.hash || ''));
+    try { return m ? decodeURIComponent(m[1]) : null; } catch (e) { return null; }
+  }
+
+  /** 결과 화면 위 하위 탭(이번 결과 | 결과 기록) */
+  function resultTabs(active) {
+    const el = SM.ui.el;
+    return el('nav', { class: 'tabs', 'aria-label': '진단 결과 보기' },
+      [['current', '#/result', '이번 결과'], ['history', '#/result/history', '결과 기록']].map(([k, href, label]) =>
+        el('a', { href, class: 'tab', text: label, 'aria-current': k === active ? 'page' : null })));
+  }
+
   function resultScreen() {
     const el = SM.ui.el;
     const list = loadResults();
@@ -714,15 +739,26 @@
         el('a', { href: '#/test', class: 'btn btn-primary', text: '진단 시작하기' })
       );
     }
-    const latest = list[list.length - 1];
-    const prev = list.length > 1 ? list[list.length - 2] : null;
+    // ?id=로 지난 결과를 열면 읽기 전용(버튼·재검사 안내 없음)
+    const wanted = viewId();
+    const found = wanted ? list.findIndex((r) => r && r.id === wanted) : -1;
+    const idx = found !== -1 ? found : list.length - 1;
+    const readOnly = idx !== list.length - 1;
+    const latest = list[idx];
+    const prev = idx > 0 ? list[idx - 1] : null;
     const dims = dimMap();
     const styles = latest.styles || {};
 
     // 1. 한 줄 요약
     const summaryCard = el('div', { class: 'card stack result-summary' },
-      el('h2', { text: '나의 학습 스타일', tabindex: '-1' }),
-      el('p', { class: 'summary-line', text: summary(latest) })
+      el('h2', { text: readOnly ? `${monthDay(latest.takenAt)} 결과` : '나의 학습 스타일', tabindex: '-1' }),
+      readOnly ? el('p', { class: 'muted', text: '지난 결과라 읽기만 할 수 있어.' }) : null,
+      el('p', { class: 'summary-line', text: summary(latest) }),
+      readOnly
+        ? el('a', { href: '#/result/history', class: 'btn', text: '결과 기록으로 돌아가기' })
+        : list.length > 1
+          ? el('a', { href: '#/result/history?compare=1', class: 'btn btn-primary', text: '지난번과 비교해 볼래?' })
+          : null
     );
 
     // 2. 스펙트럼
@@ -877,13 +913,15 @@
     );
 
     return el('div', { class: 'stack result' },
-      summaryCard, legend, spectrumCards, varkCard, kolbCard, weakCard, extCards, disclaimer, buttons, retest
+      resultTabs(readOnly ? 'history' : 'current'),
+      summaryCard, legend, spectrumCards, varkCard, kolbCard, weakCard, extCards, disclaimer,
+      readOnly ? null : buttons, readOnly ? null : retest
     );
   }
 
   SM.test = {
     buildOrder, buildDeepOrder, shuffle, resumeIndex, isAnswered, itemById, sectionIntro,
-    finish, finishDeep, summary, AREA_INTRO, DISCLAIMER
+    finish, finishDeep, summary, monthDay, resultTabs, AREA_INTRO, DISCLAIMER, RETEST_DAYS
   };
 
   if (typeof SM.route === 'function') {

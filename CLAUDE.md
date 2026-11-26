@@ -56,6 +56,7 @@ js/
   data/questions.js
   data/strategies.js
   test.js          기능 1 진단
+  result-history.js 기능 1 결과 기록(#/result/history: 비교·변화 흐름·약점 변화)
   recommend.js     기능 2 추천 계산
   strategy-view.js 기능 2 화면
   planner.js       기능 3
@@ -73,7 +74,7 @@ tests/
 docs/PRD.md, docs/research.md
 ```
 
-`index.html`의 스크립트 로드 순서: `config → ui → dateutil → store → auth → data/* → recommend → test → strategy-view → planner → checkin → remote → feed → chat → settings → app`.
+`index.html`의 스크립트 로드 순서: `config → ui → dateutil → store → auth → data/* → recommend → test → result-history → strategy-view → planner → checkin → remote → feed → chat → settings → app`.
 
 ## 6. 결정된 사항
 

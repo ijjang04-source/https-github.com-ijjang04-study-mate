@@ -5,7 +5,7 @@
 
   // 접두사의 v1은 키 이름 규칙이고, 데이터 모양 버전은 SCHEMA(meta.schema)다.
   const PREFIX = 'sm:v1:';
-  const SCHEMA = 2;
+  const SCHEMA = 3;
   const META_KEY = 'meta';
 
   /** 키 이름 헬퍼(접두사 제외) */
@@ -142,6 +142,78 @@
   }
 
   SM.schema2 = { splitRuleText, planToV2, checkinToV2, plannerToV2, migrateV2 };
+
+  // ---------- 스키마 3: 진단 결과마다 id·kind ----------
+  // kind: 'basic'(기본) | 'deep'(기본 + 심화 포함). 심화는 따로 쌓지 않고 가장 최근 기본 결과에 붙는다.
+
+  const RESULT_ID_RE = /^(\d{4}-\d{2}-\d{2}|unknown)-(\d+)$/;
+
+  /** 새 결과 id 'YYYY-MM-DD-n': 그날 쓰인 가장 큰 n + 1(중간 것을 지워도 겹치지 않음) */
+  function nextResultId(list, takenAt) {
+    const day = /^\d{4}-\d{2}-\d{2}/.test(String(takenAt || '')) ? String(takenAt).slice(0, 10) : 'unknown';
+    let max = 0;
+    (Array.isArray(list) ? list : []).forEach((r) => {
+      const m = r && typeof r.id === 'string' ? RESULT_ID_RE.exec(r.id) : null;
+      if (m && m[1] === day) max = Math.max(max, +m[2]);
+    });
+    return `${day}-${max + 1}`;
+  }
+
+  function kindOf(r) { return r && r.extended ? 'deep' : 'basic'; }
+
+  /** 결과 배열 → id·kind가 붙은 새 배열. 하나만 저장된 예전 결과는 배열 첫 항목으로. 바꿀 게 없으면 같은 값. */
+  function resultsToV3(value) {
+    const list = isPlain(value) ? [value] : value;
+    if (!Array.isArray(list)) return value;
+    let changed = list !== value;
+    const out = list.filter((r) => isPlain(r));
+    if (out.length !== list.length) changed = true;
+    const done = out.filter((r) => typeof r.id === 'string' && r.id);
+    const next = out.map((r) => {
+      let c = r;
+      if (typeof r.id !== 'string' || !r.id) {
+        c = Object.assign({}, c, { id: nextResultId(done, r.takenAt) });
+        done.push(c);
+      }
+      if (c.kind !== kindOf(c)) c = Object.assign({}, c, { kind: kindOf(c) });
+      if (c !== r) changed = true;
+      return c;
+    });
+    return changed ? next : value;
+  }
+
+  /** 전략 화면이 '추천을 만든 결과'를 알아보는 열쇠. id가 있으면 id로(기록을 지워도 그대로). */
+  function resultKey(list) {
+    const r = list[list.length - 1];
+    if (r && r.id) return `${r.id}:${r.extended ? 1 : 0}`;
+    return `${list.length}:${r.takenAt}:${r.extended ? 1 : 0}`;
+  }
+
+  function migrateV3(api) {
+    let n = 0;
+    api.keys('results:').forEach((k) => {
+      const before = api.get(k, null);
+      const after = resultsToV3(before);
+      if (after === before) return;
+      api.set(k, after);
+      n++;
+      // 예전 열쇠(개수:날짜:심화)로 기억한 plan은 새 열쇠로(추천이 바뀌었다고 잘못 묻지 않게)
+      const sid = k.slice('results:'.length);
+      const plan = api.get('plan:' + sid, null);
+      const oldList = isPlain(before) ? [before] : before;
+      if (!isPlain(plan) || !Array.isArray(oldList) || !oldList.length || !after.length) return;
+      const oldKey = `${oldList.length}:${oldList[oldList.length - 1].takenAt}:${oldList[oldList.length - 1].extended ? 1 : 0}`;
+      const newKey = resultKey(after);
+      const p = Object.assign({}, plan);
+      let touched = false;
+      if (p.basedOn === oldKey) { p.basedOn = newKey; touched = true; }
+      if (p.announced === oldKey) { p.announced = newKey; touched = true; }
+      if (touched) api.set('plan:' + sid, p);
+    });
+    return n;
+  }
+
+  SM.schema3 = { nextResultId, resultsToV3, resultKey, migrateV3 };
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
   /**
@@ -365,7 +437,8 @@
     const target = typeof options.schema === 'number' ? options.schema : SCHEMA;
     const MIGRATIONS = options.migrations || {
       1: () => { /* 최초 버전: 할 일 없음 */ },
-      2: (api) => { migrateV2(api); }   // 여러 문장 전략 → 나만의 한 가지 전략
+      2: (api) => { migrateV2(api); },  // 여러 문장 전략 → 나만의 한 가지 전략
+      3: (api) => { migrateV3(api); }   // 진단 결과마다 id·kind
     };
 
     /**

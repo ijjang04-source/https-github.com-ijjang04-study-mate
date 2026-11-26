@@ -352,6 +352,30 @@
     ANY_ANXIETY: '시험 때 긴장해서 아는 것도 틀리기 쉬움'
   };
 
+  // 결과 기록의 짧은 이름표: "수학 — 11/13 풀이법 선택 → 12/11 실수"
+  SM.data.weaknessShort = {
+    MATH_SELECT: '풀이법 선택',
+    MATH_PROCESS: '풀이 과정 따라가기',
+    MATH_BASIC: '기초 연산·공식',
+    MATH_CARELESS: '실수',
+    ENG_VOCAB: '단어 기억',
+    ENG_CONFUSE: '비슷한 단어 구별',
+    ENG_GRAMMAR: '문법 적용',
+    ENG_READING: '요지 파악',
+    KOR_STRUCTURE: '비문학 구조',
+    KOR_APPLY: '개념어 적용',
+    KOR_MEMORIZE: '문법·어법 암기',
+    KOR_ILLUSION: '이해 착각',
+    SCI_RELATION: '개념 사이 관계',
+    SCI_MISCONCEPT: '일상 생각과 다른 개념',
+    SCI_TERMS: '용어·기호',
+    SCI_APPLY: '문제에 적용',
+    SOC_RECALL: '시험 때 떠올리기',
+    SOC_ORDER: '사건 순서',
+    SOC_CAUSAL: '원인·결과 비교',
+    ANY_ANXIETY: '시험 긴장'
+  };
+
   // 추천 이유 문장용: "<표현> 너에게 딱 맞는 연습이야."
   SM.data.weaknessYou = {
     MATH_SELECT: '풀이법을 고르는 게 어려운',
