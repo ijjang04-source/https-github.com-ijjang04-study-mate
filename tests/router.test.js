@@ -69,7 +69,7 @@
       .forEach((p) => assert.ok(SM.routes[p], '등록 안 됨: ' + p));
     assert.equal(SM.routes['/login'].auth, false);
     assert.equal(SM.routes['/chat'].auth, true);
-    assert.equal(SM.routes['/result'].tab, 'test');
+    assert.equal(SM.routes['/result'].tab, 'result');
     assert.equal(R.match('#/planner/day').route.title, '플래너');
   });
 

@@ -299,6 +299,7 @@
 
       [
         el('h2', { text: TITLE, tabindex: '-1' }),
+        SM.test && SM.test.lastResultCard ? SM.test.lastResultCard(list, { compact: true }) : null,
         subjects.length > 1 ? tabs : null,
         panel,
         habitsCard,

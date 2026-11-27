@@ -108,7 +108,7 @@ a { color: var(--accent); }
   bottom: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   max-width: 720px;
   margin: 0 auto;
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -127,6 +127,11 @@ a { color: var(--accent); }
   text-decoration: none;
   white-space: nowrap;
   border-top: 3px solid transparent;
+}
+
+/* 탭 7개: 폭 360px에서도 '우리 반'이 한 줄에 들어가게 */
+@media (max-width: 400px) {
+  #tabbar a { font-size: 14px; padding: 0 1px; }
 }
 
 /* 현재 탭: 색 + 굵기 + 위쪽 막대로 함께 표시 */
@@ -484,6 +489,12 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 /* ---------- 결과 ---------- */
 
 .summary-line { font-size: 18px; font-weight: 600; margin: 0; }
+
+/* 마지막 검사 결과 카드(진단 시작 화면·전략 화면) */
+.last-result { border-left: 4px solid var(--accent); }
+.last-result-head, .last-result-line { margin: 0; }
+.last-result-line { font-weight: 600; }
+.last-result-compact { gap: var(--gap); padding: calc(var(--gap) * 1.5); }
 
 .spectrum { border-top: 1px solid var(--line); padding-top: var(--gap); }
 .spectrum:first-of-type { border-top: 0; padding-top: 0; }

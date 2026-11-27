@@ -468,7 +468,8 @@
           )
         );
       } else {
-        actions.append(el('button', { type: 'button', class: 'btn btn-primary', text: '시작하기', onClick: startNew }));
+        const again = mode === 'basic' && loadResults().length > 0;
+        actions.append(el('button', { type: 'button', class: 'btn btn-primary', text: again ? '다시 검사하기' : '시작하기', onClick: startNew }));
       }
 
       if (mode === 'deep') {
@@ -485,7 +486,7 @@
           el('p', { text: '이 검사는 너의 공부 선호를 보여주는 거울이야. 좋고 나쁜 유형은 없고, 선호는 바뀔 수 있어.' }),
           el('p', { class: 'muted', text: '예상 시간 10~12분' }),
           actions
-        ));
+        ), lastResultCard(loadResults()));
       }
     }
 
@@ -731,6 +732,31 @@
         el('a', { href, class: 'tab', text: label, 'aria-current': k === active ? 'page' : null })));
   }
 
+  /** 마지막 검사 결과 요약(화면 없이 계산만): null 또는 { id, date, line } */
+  function lastResultInfo(list) {
+    const arr = Array.isArray(list) ? list.filter((r) => r && r.styles) : [];
+    if (!arr.length) return null;
+    const latest = arr[arr.length - 1];
+    let line = '';
+    try { line = summary(latest); } catch (e) { line = ''; }
+    return { id: latest.id || null, date: monthDay(latest.takenAt), line };
+  }
+
+  /** 진단 시작 화면·전략 화면 위에 두는 '마지막 검사 결과' 카드. 결과가 없으면 null */
+  function lastResultCard(list, opts) {
+    const info = lastResultInfo(list);
+    if (!info) return null;
+    const el = SM.ui.el;
+    const o = opts || {};
+    return el('div', { class: 'card stack last-result' + (o.compact ? ' last-result-compact' : '') },
+      el('p', { class: 'last-result-head' },
+        el('strong', { text: '마지막 검사 결과' }),
+        info.date ? el('span', { class: 'muted', text: ' · ' + info.date }) : null),
+      info.line ? el('p', { class: 'last-result-line', text: info.line }) : null,
+      el('a', { href: '#/result', class: 'btn', text: '결과 자세히 보기' })
+    );
+  }
+
   function resultScreen() {
     const el = SM.ui.el;
     const list = loadResults();
@@ -923,12 +949,13 @@
 
   SM.test = {
     buildOrder, buildDeepOrder, shuffle, resumeIndex, isAnswered, itemById, sectionIntro,
-    finish, finishDeep, summary, monthDay, resultTabs, AREA_INTRO, DISCLAIMER, RETEST_DAYS
+    finish, finishDeep, summary, monthDay, resultTabs, lastResultInfo, lastResultCard,
+    AREA_INTRO, DISCLAIMER, RETEST_DAYS
   };
 
   if (typeof SM.route === 'function') {
     SM.route('#/test', { title: '학습 스타일 진단', render: testScreen });
     SM.route('#/test/:mode(deep)', { title: '심화 검사', tab: 'test', render: testScreen });
-    SM.route('#/result', { title: '진단 결과', tab: 'test', render: resultScreen });
+    SM.route('#/result', { title: '진단 결과', tab: 'result', render: resultScreen });
   }
 })(window.SM = window.SM || {});

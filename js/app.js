@@ -241,7 +241,7 @@
   const PLACEHOLDERS = [
     ['#/chat', { title: '챗봇' }],
     ['#/test', { title: '학습 스타일 진단' }],
-    ['#/result', { title: '진단 결과', tab: 'test' }],
+    ['#/result', { title: '진단 결과', tab: 'result' }],
     ['#/strategy', { title: '맞춤 전략' }],
     ['#/planner/:view(month|week|day)', {
       title: '플래너',

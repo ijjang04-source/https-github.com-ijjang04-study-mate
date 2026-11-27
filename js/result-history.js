@@ -403,6 +403,6 @@
   };
 
   if (typeof SM.route === 'function') {
-    SM.route('#/result/history', { title: '결과 기록', tab: 'test', render: historyScreen });
+    SM.route('#/result/history', { title: '결과 기록', tab: 'result', render: historyScreen });
   }
 })(window.SM = window.SM || {});
