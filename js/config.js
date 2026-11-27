@@ -4,7 +4,7 @@
   SM.config = {
     schools: [
       { id: 'SM01', name: '숙명고등학교' },
-      { id: 'DEMO', name: '안양외국어고등학교' }
+      { id: 'AFLS', name: '안양외국어고등학교' }
     ],
 
     // 반마다 하나인 '반 공용 입장 코드'의 해시.
@@ -12,15 +12,8 @@
     // codeHash는 문자열 하나 또는 배열(SHA-256과 'fb:' 대체 해시를 함께 넣으면
     // crypto.subtle을 못 쓰는 file:// 환경에서도 입장할 수 있다).
     classes: [
-      // DEMO 1학년 1반, 체험용 코드 '1111'
-      {
-        school: 'DEMO', grade: 1, cls: 1,
-        codeHash: [
-          '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
-          'fb:8a7bf4ee8c9762990847fd1905d3c8f9'
-        ]
-      },
       { school: 'SM01', grade: 1, cls: 1, codeHash: 'bcb15f821479b4d5772bd0ca866c00ad5f926e3580720659cc80d39c9d09802a' },
+      { school: 'AFLS', grade: 2, cls: 7, codeHash: ['6195df46a1ee6b6984140dc3c3e6d772765010745d6c3f1ddd736ddbbd564cca', 'fb:592d2f066335f1f5ab3faafee7de8515'] }
     ],
 
     subjects: ['국어', '영어', '수학', '과학', '사회'],
