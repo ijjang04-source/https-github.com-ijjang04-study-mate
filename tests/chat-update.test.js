@@ -141,7 +141,7 @@
     return out;
   }
 
-  test("chat 문구: '일곱 가지'가 없고, 전문 용어는 쉬운 말 뒤 괄호로만(뜻 풀이 답은 제외)", () => {
+  test("chat 문구: '일곱'이라는 말이 없고, 전문 용어는 쉬운 말 뒤 괄호로만(뜻 풀이 답은 제외)", () => {
     const texts = [];
     Object.keys(SM.flows).forEach((k) => texts.push(...messageTexts(SM.flows[k])));
     const base = { today: '2026-11-19', hasResult: true, hasPlanStrategies: true, todayBlocks: 2, todayGridEntries: 2,
