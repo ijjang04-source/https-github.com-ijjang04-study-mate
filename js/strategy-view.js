@@ -34,9 +34,9 @@
     return { strategies, habits: SM.recommend.habits(latest).map((h) => h.id) };
   }
 
-  // 받침: 없으면 0, 한글이 아니면 -1(ㄹ = 8)
+  // 받침: 없으면 0, 한글이 아니면 -1(ㄹ = 8). 끝의 '(원래 용어)'는 빼고 앞말에 맞춘다.
   function batchim(w) {
-    const t = String(w || '');
+    const t = String(w || '').replace(/\([^()]*\)$/, '');
     const c = t.charCodeAt(t.length - 1) - 0xac00;
     return c >= 0 && c <= 11171 ? c % 28 : -1;
   }
@@ -309,7 +309,8 @@
             onClick: confirmPlan
           }),
           el('a', { href: '#/strategy/seven', class: 'btn', text: '나만의 한 가지 전략 만들기' })
-        )
+        ),
+        el('a', { href: '#/strategy/terms', class: 'terms-link', text: '용어 풀이 모음 — 어려운 말을 한곳에서 보기' })
       ].forEach((n) => { if (n) root.appendChild(n); });
     }
 
@@ -530,11 +531,31 @@
     };
   }
 
-  SM.strategyView = { card: buildStrategyCard };
+  // ---------- 용어 풀이 모음 #/strategy/terms ----------
+  function termsScreen() {
+    const el = SM.ui.el;
+    const G = SM.data.glossary || {};
+    const groups = [];
+    Object.keys(G).forEach((t) => { if (groups.indexOf(G[t].group) === -1) groups.push(G[t].group); });
+    return el('div', { class: 'stack no-gloss terms-page' },
+      el('h2', { text: '용어 풀이 모음', tabindex: '-1' }),
+      el('p', { class: 'muted', text: '화면에서 점선 밑줄이 있는 말을 누르면 그 자리에서도 풀이를 볼 수 있어.' }),
+      groups.map((g) => el('section', { class: 'card stack' },
+        el('h3', { text: g }),
+        el('dl', { class: 'terms-list' }, Object.keys(G).filter((t) => G[t].group === g)
+          .sort((a, b) => a.localeCompare(b, 'ko'))
+          .map((t) => [el('dt', { text: t }), el('dd', null, el('span', { text: G[t].easy }), el('span', { class: 'term-ex', text: '예) ' + G[t].example }))]))
+      )),
+      el('a', { href: '#/strategy', class: 'btn', text: '전략으로 돌아가기' })
+    );
+  }
+
+  SM.strategyView = { card: buildStrategyCard, termsScreen };
 
 
   if (typeof SM.route === 'function') {
     SM.route('#/strategy', { title: '맞춤 전략', render: strategyScreen });
     SM.route('#/strategy/seven', { title: '나만의 한 가지 전략', tab: 'strategy', render: myRuleScreen });
+    SM.route('#/strategy/terms', { title: '용어 풀이 모음', tab: 'strategy', render: termsScreen });
   }
 })(window.SM = window.SM || {});

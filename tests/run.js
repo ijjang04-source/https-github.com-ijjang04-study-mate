@@ -30,6 +30,22 @@
     location: { hash: '' }
   };
   sandbox.window = sandbox; // 컨텍스트 안에서 window === globalThis
+  // 소스 검사용(읽기 전용). 브라우저 러너에는 없으므로 그 테스트는 node에서만 돈다.
+  sandbox.SMTestFS = {
+    list(exts) {
+      const out = [];
+      (function walk(dir) {
+        fs.readdirSync(dir, { withFileTypes: true }).forEach((d) => {
+          if (d.name === '.git' || d.name === 'node_modules') return;
+          const p = path.join(dir, d.name);
+          if (d.isDirectory()) walk(p);
+          else if (exts.some((x) => d.name.endsWith(x))) out.push(path.relative(ROOT, p).replace(/\\/g, '/'));
+        });
+      })(ROOT);
+      return out;
+    },
+    read(rel) { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); }
+  };
   vm.createContext(sandbox);
 
   function load(rel) {

@@ -69,7 +69,8 @@
   /** 받침이 있으면 a, 없으면 b. 한글이 아닌 글자로 끝나면 b. */
   function josa(word, a, b) {
     const s = String(word || '');
-    const code = s.charCodeAt(s.length - 1);
+    const base = s.replace(/\([^()]*\)$/, '');   // '쉬운 말(용어)'은 앞말에 맞춘다
+    const code = base.charCodeAt(base.length - 1);
     if (code >= 0xac00 && code <= 0xd7a3) return s + ((code - 0xac00) % 28 ? a : b);
     return s + b;
   }
@@ -101,7 +102,7 @@
     const aliases = (intents || intentsData()).strategyAliases || {};
     let best = null;
     (strategies || SM.data.strategies).forEach((s) => {
-      [s.name].concat(aliases[s.id] || []).forEach((w) => {
+      [s.name, s.term].concat(aliases[s.id] || []).forEach((w) => {
         const n = normalize(w);
         if (n && norm.indexOf(n) !== -1 && (!best || n.length > best.len)) best = { id: s.id, len: n.length };
       });
@@ -516,7 +517,7 @@
           return [
             { say: '불안한 마음 들 수 있어. 말해 줘서 고마워.' },
             { say: '걱정을 10분 동안 종이에 그대로 써 보면 마음이 좀 가벼워지기도 해.' },
-            { choices: [{ label: '표현적 글쓰기 보기', action: 'showStrategy', id: 'expressiveWriting' }, { label: '10분 블록 만들기', action: 'smallBlock' }] }
+            { choices: [{ label: '걱정을 글로 쏟아 내기 보기', action: 'showStrategy', id: 'expressiveWriting' }, { label: '10분 블록 만들기', action: 'smallBlock' }] }
           ];
         }
         return [

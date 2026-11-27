@@ -55,6 +55,7 @@ js/
   auth.js          입장·세션
   data/questions.js
   data/strategies.js
+  data/glossary.js 용어 사전(SM.data.glossary: easy·example), 풀이 버튼은 ui.js의 glossify
   test.js          기능 1 진단
   result-history.js 기능 1 결과 기록(#/result/history: 비교·변화 흐름·약점 변화)
   recommend.js     기능 2 추천 계산

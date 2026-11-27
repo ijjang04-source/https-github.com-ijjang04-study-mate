@@ -690,10 +690,10 @@
   const DISCLAIMER = '스타일은 능력이 아니라 선호야. 연구에 따르면 스타일에만 맞추는 것보다, 효과가 확인된 전략을 내 방식으로 쓰는 게 중요해.';
 
   const KOLB_NAMES = {
-    diverging: '구체적 경험 + 성찰적 관찰 쪽',
-    assimilating: '추상적 개념 + 성찰적 관찰 쪽',
-    converging: '추상적 개념 + 능동적 실험 쪽',
-    accommodating: '구체적 경험 + 능동적 실험 쪽'
+    diverging: '직접 겪기 + 지켜보며 생각하기 쪽',
+    assimilating: '논리로 따지기 + 지켜보며 생각하기 쪽',
+    converging: '논리로 따지기 + 바로 써 보기 쪽',
+    accommodating: '직접 겪기 + 바로 써 보기 쪽'
   };
 
   function signed(n) { return n > 0 ? '+' + n : String(n); }
@@ -836,15 +836,15 @@
     const kolbCard = el('section', { class: 'card stack' },
       el('h3', { text: '경험에서 배우는 방식' }),
       el('div', { class: 'kolb-wrap' },
-        el('span', { class: 'kolb-axis kolb-top', text: '구체적 경험' }),
+        el('span', { class: 'kolb-axis kolb-top', text: '직접 겪기(구체적 경험)' }),
         el('div', { class: 'kolb-grid', role: 'img', 'aria-label': `가로 ${signed(kx || 0)}, 세로 ${signed(ky || 0)}. ${kolbText}` },
           el('div', { class: 'kolb-balance' }),
           (kx !== null && kx !== undefined && ky !== null && ky !== undefined)
             ? el('div', { class: 'kolb-dot', style: { left: ((kx + 100) / 2) + '%', top: ((ky + 100) / 2) + '%' } })
             : null
         ),
-        el('span', { class: 'kolb-axis kolb-bottom', text: '추상적 개념' }),
-        el('div', { class: 'kolb-x' }, el('span', { text: '← 성찰적 관찰' }), el('span', { text: '능동적 실험 →' }))
+        el('span', { class: 'kolb-axis kolb-bottom', text: '논리로 따지기(추상적 개념)' }),
+        el('div', { class: 'kolb-x' }, el('span', { text: '← 지켜보며 생각하기(성찰적 관찰)' }), el('span', { text: '바로 써 보기(능동적 실험) →' }))
       ),
       el('p', { text: kolbText })
     );

@@ -622,6 +622,31 @@ body[data-auth="out"] #view { padding-bottom: calc(var(--gap) * 3); }
 
 .disclaimer { background: var(--accent-weak); margin: 0; }
 
+/* ---------- 용어 풀이 ---------- */
+
+button.term {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
+  min-height: 0; min-width: 0; width: auto; display: inline; cursor: help;
+  text-decoration: underline dotted; text-decoration-thickness: 2px; text-underline-offset: 3px;
+  /* 글자 크기는 그대로 두고 누를 자리만 넓힌다(44px) */
+  position: relative;
+}
+button.term::after { content: ''; position: absolute; left: -4px; right: -4px; top: 50%; height: 44px; transform: translateY(-50%); }
+button.term:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+button.term[aria-expanded="true"] { text-decoration-style: solid; color: var(--accent); }
+.term-pop {
+  display: block; margin: 6px 0; padding: 8px 12px; border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 8px; background: var(--accent-weak); color: var(--text); font-size: 16px; font-weight: normal; line-height: 1.5;
+  text-align: left; white-space: normal;
+}
+.term-pop[hidden] { display: none; }
+.term-pop strong { margin-right: 4px; }
+.term-ex { display: block; color: var(--muted); }
+.terms-link { display: inline-block; min-height: 44px; line-height: 44px; }
+.terms-list { margin: 0; }
+.terms-list dt { font-weight: bold; margin-top: 8px; }
+.terms-list dd { margin: 0 0 4px; }
+
 /* ---------- 결과 기록 ---------- */
 
 .legend-now { border: 2px solid var(--accent); background: var(--accent); }

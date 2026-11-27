@@ -58,6 +58,9 @@
   // ---------- 실행부(DOM 필요) ----------
 
   let currentCleanup = null;
+  let stopGloss = null;
+  // 용어 풀이 밑줄을 붙이는 화면: 결과·전략·플래너·점검
+  const GLOSS_ROUTES = /^#?\/(result|strategy|planner|check)(\/|$)/;   // route.path는 '#' 없이 저장됨
   let renderToken = 0;
   let currentKeys = new Set();
 
@@ -116,7 +119,9 @@
     const nick = document.getElementById('nickname');
     if (nick) nick.textContent = me ? me.nickname : '';
     document.title = (route.title ? route.title + ' · ' : '') + APP_NAME;
+    if (stopGloss) { stopGloss(); stopGloss = null; }
     SM.ui.mount(node);
+    if (GLOSS_ROUTES.test(route.path) && SM.ui.glossWatch) stopGloss = SM.ui.glossWatch(document.getElementById('view'));
     SM.ui.markTab(route.tab || splitHash(route.path)[0]);
 
     const view = document.getElementById('view');

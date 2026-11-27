@@ -216,7 +216,151 @@
     return { node, set };
   }
 
-  SM.ui = { el, clear, mount, markTab, toast, debounce, confirmDialog, promptDialog, savedIndicator };
+  // --- gloss: 용어 풀이 (시작) ---
+  // 화면 글자 속 사전 용어(SM.data.glossary)를 카드(또는 문단)마다 처음 한 번만 점선 밑줄 버튼으로 바꾼다.
+  // 누르면 그 자리에 풀이 상자가 열리고, 다시 누르거나 Esc로 닫힌다.
+  // 글자는 항상 텍스트 노드로만 다룬다(splitText·createTextNode·el). HTML 문자열로 넣지 않는다.
+
+  const GLOSS_SKIP = 'button, a, label, summary, option, select, textarea, input, script, style, canvas, svg, [contenteditable], [aria-hidden="true"], .term-pop, .no-gloss';
+  // 카드가 있으면 카드 전체(안의 details 출처까지)가 한 범위, 카드 밖이면 문단마다
+  const GLOSS_SCOPE = '.card, .gloss-scope';
+  const GLOSS_PARA = 'p, li, dd, dt, h2, h3, h4, td, th';
+  let glossSeq = 0;
+
+  function glossTerms(glossary) {
+    // 긴 용어가 먼저('정교화 질문' > '정교화')
+    return Object.keys(glossary || SM.data && SM.data.glossary || {}).sort((a, b) => b.length - a.length);
+  }
+
+  /**
+   * 순수 함수: 문자열을 [{ text }] / [{ term }] 조각으로. used(Set)에 있는 용어는 건너뛰고, 쓴 용어는 used에 넣는다.
+   * 용어마다 처음 나온 곳 하나만 고른다.
+   */
+  function glossSplit(text, terms, used) {
+    const s = String(text);
+    const seen = used || new Set();
+    const out = [];
+    let pos = 0;
+    for (;;) {
+      let best = null;
+      terms.forEach((t) => {
+        if (seen.has(t)) return;
+        const at = s.indexOf(t, pos);
+        if (at !== -1 && (!best || at < best.at || (at === best.at && t.length > best.term.length))) best = { at, term: t };
+      });
+      if (!best) break;
+      if (best.at > pos) out.push({ text: s.slice(pos, best.at) });
+      out.push({ term: best.term });
+      seen.add(best.term);
+      // 겹치는 짧은 용어('정교화 질문' 안의 '정교화')도 이 자리에서는 쓴 것으로 본다
+      terms.forEach((t) => { if (best.term.indexOf(t) !== -1) seen.add(t); });
+      pos = best.at + best.term.length;
+    }
+    if (pos < s.length || !out.length) out.push({ text: s.slice(pos) });
+    return out;
+  }
+
+  function closeGloss(btn) {
+    const pop = document.getElementById(btn.getAttribute('aria-controls'));
+    btn.setAttribute('aria-expanded', 'false');
+    if (pop) pop.hidden = true;
+  }
+
+  /** 용어 버튼 + 바로 뒤 풀이 상자 → [button, span] */
+  function termNodes(term, entry) {
+    const id = 'term-pop-' + (++glossSeq);
+    const pop = el('span', { class: 'term-pop', id, role: 'note', hidden: true },
+      el('strong', { text: term }), ' ', entry.easy,
+      entry.example ? el('span', { class: 'term-ex', text: '예) ' + entry.example }) : null);
+    const btn = el('button', {
+      type: 'button', class: 'term', 'aria-expanded': 'false', 'aria-controls': id, text: term,
+      onClick() {
+        const open = btn.getAttribute('aria-expanded') === 'true';
+        if (open) { closeGloss(btn); return; }
+        btn.setAttribute('aria-expanded', 'true');
+        pop.hidden = false;
+      }
+    });
+    return [btn, pop];
+  }
+
+  function glossScopeOf(node, root) {
+    const host = node.parentNode;
+    const scope = host.closest(GLOSS_SCOPE) || host.closest(GLOSS_PARA);
+    return scope && root.contains(scope) ? scope : root;
+  }
+
+  /** root 안의 글자에 용어 버튼을 붙인다. 이미 붙인 곳은 건드리지 않아 여러 번 불러도 된다. → 새로 붙인 개수 */
+  function glossify(root, glossary) {
+    const G = glossary || (SM.data && SM.data.glossary);
+    if (!root || !G || typeof document === 'undefined') return 0;
+    if (root.closest && root.closest('.no-gloss')) return 0;
+    const terms = glossTerms(G);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeValue.trim() && n.parentNode && !n.parentNode.closest(GLOSS_SKIP)) nodes.push(n);
+    }
+    const usedBy = new Map();   // scope → Set(이미 밑줄 그은 용어)
+    const usedOf = (scope) => {
+      if (!usedBy.has(scope)) {
+        const set = new Set();
+        scope.querySelectorAll('button.term').forEach((b) => {
+          const t = b.textContent;
+          set.add(t);
+          terms.forEach((x) => { if (t.indexOf(x) !== -1) set.add(x); });
+        });
+        usedBy.set(scope, set);
+      }
+      return usedBy.get(scope);
+    };
+    let added = 0;
+    nodes.forEach((node) => {
+      const parts = glossSplit(node.nodeValue, terms, usedOf(glossScopeOf(node, root)));
+      if (parts.length === 1 && parts[0].text !== undefined) return;
+      const frag = document.createDocumentFragment();
+      parts.forEach((p) => {
+        if (p.text !== undefined) { if (p.text) frag.appendChild(document.createTextNode(p.text)); return; }
+        termNodes(p.term, G[p.term]).forEach((x) => frag.appendChild(x));
+        added++;
+      });
+      node.parentNode.replaceChild(frag, node);
+    });
+    return added;
+  }
+
+  let glossEscBound = false;
+  function bindGlossEsc() {
+    if (glossEscBound || typeof document === 'undefined') return;
+    glossEscBound = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('[role="alertdialog"], [role="dialog"], dialog[open]')) return;   // 확인창이 먼저
+      const open = Array.from(document.querySelectorAll('button.term[aria-expanded="true"]'));
+      if (!open.length) return;
+      open.forEach(closeGloss);
+      const last = open[open.length - 1];
+      const a = document.activeElement;
+      if (!a || a === document.body || (a.closest && a.closest('.term-pop, button.term'))) last.focus();
+    });
+  }
+
+  /** root를 지켜보다가 새 글자가 생기면 다시 붙인다(화면 일부만 다시 그리는 경우). → 멈추는 함수 */
+  function glossWatch(root) {
+    if (!root || typeof MutationObserver === 'undefined') return () => {};
+    bindGlossEsc();
+    glossify(root);
+    let timer = null;
+    const obs = new MutationObserver(() => {
+      if (timer) return;
+      timer = setTimeout(() => { timer = null; glossify(root); }, 30);
+    });
+    obs.observe(root, { childList: true, subtree: true, characterData: true });
+    return () => { obs.disconnect(); if (timer) clearTimeout(timer); timer = null; };
+  }
+  // --- gloss: 용어 풀이 (끝) ---
+
+  SM.ui = { el, clear, mount, markTab, toast, debounce, confirmDialog, promptDialog, savedIndicator, glossSplit, glossify, glossWatch };
 
   // ---------- 화면 등록 ----------
   // 기능 파일(test.js, planner.js …)이 로드될 때 바로 등록할 수 있도록 ui.js에 둔다.

@@ -629,7 +629,7 @@
       const days = SM.date.weekDays(w);
       const short = (iso) => `${+iso.slice(5, 7)}/${+iso.slice(8)}`;
       const input = el('input', {
-        type: 'text', maxlength: 60, 'aria-label': `${i + 1}주차 초점`, placeholder: '예) 수학 이차함수 교차 연습',
+        type: 'text', maxlength: 60, 'aria-label': `${i + 1}주차 초점`, placeholder: '예) 수학 이차함수 여러 유형 섞어 풀기',
         onInput(e) { M.weekFocus[w] = e.target.value; changed(); }
       });
       input.value = M.weekFocus[w] || '';
@@ -694,7 +694,7 @@
       return el('div', { class: 'field' }, el('label', { for: 'woop-' + k, text: label }), ta);
     };
     const woop = el('details', { class: 'card woop', open: avoid },
-      el('summary', { text: 'WOOP: 바라는 것 → 최상의 결과 → 내 안의 장애물 → 계획' }),
+      el('summary', { text: '바람·장애물·계획 세우기(WOOP): 바라는 것 → 최상의 결과 → 내 안의 장애물 → 계획' }),
       el('div', { class: 'stack' },
         woopField('wish', '소망(Wish)', '이번 달 꼭 이루고 싶은 것'),
         woopField('outcome', '최상의 결과(Outcome)', '이뤄지면 어떤 기분일까?'),
@@ -703,7 +703,7 @@
       )
     );
     if (avoid && !M.woopSuggested && SM.chat && typeof SM.chat.say === 'function') {
-      SM.chat.say('이번 달 WOOP을 같이 적어 볼래? 플래너 월간 화면에 펼쳐 뒀어.');
+      SM.chat.say('이번 달 바람·장애물·계획(WOOP)을 같이 적어 볼래? 플래너 월간 화면에 펼쳐 뒀어.');
       M.woopSuggested = true;
       instance.save(mk, data);
     }
@@ -979,19 +979,20 @@
   /** 받침에 따라 '을/를' */
   function objectJosa(word) {
     const w = String(word || '');
-    const code = w.charCodeAt(w.length - 1) - 0xac00;
+    const base = w.replace(/\([^()]*\)$/, '');   // '쉬운 말(용어)'은 앞말에 맞춘다
+    const code = base.charCodeAt(base.length - 1) - 0xac00;
     if (code < 0 || code > 11171) return w + '을(를)';
     return w + (code % 28 ? '을' : '를');
   }
 
   /** 칸에 쓸 전략 약칭(4자 이내, 서로 다름) */
   const ABBR = {
-    chunking: '묶기', acronym: '두문자', loci: '장소법', keyword: '핵심단어', automation: '자동화',
-    elaboration: '정교화', elabQuestion: '왜질문', selfExplain: '자기설명', examples: '예시', workedExample: '예제',
-    refutation: '반박', teach: '설명', organize: '조직화', conceptMap: '개념도', dualCoding: '그림+글',
-    imagery: '심상', retrieval: '인출', spacing: '분산', interleave: '교차', pretest: '사전시험',
-    errorLog: '오답', metacog: '메타인지', planDoc: '계획서', ifThen: '실행의도', woop: 'WOOP',
-    timeEnv: '환경', effort: '노력', helpSeek: '질문', havruta: '하브루타', coop: '협동',
+    chunking: '묶기', acronym: '첫글자', loci: '장소', keyword: '소리연결', automation: '반복',
+    elaboration: '이어정리', elabQuestion: '왜질문', selfExplain: '스스로설명', examples: '예시', workedExample: '풀이따라',
+    refutation: '바로잡기', teach: '설명', organize: '표정리', conceptMap: '개념잇기', dualCoding: '그림+글',
+    imagery: '장면', retrieval: '떠올리기', spacing: '간격복습', interleave: '섞어풀기', pretest: '미리풀기',
+    errorLog: '오답', metacog: '점검', planDoc: '계획서', ifThen: '언제무엇', woop: 'WOOP',
+    timeEnv: '환경', effort: '노력', helpSeek: '질문', havruta: '짝토론', coop: '협동',
     expressiveWriting: '글쓰기', reciprocal: '상보독해'
   };
   function abbr(id) {
@@ -1266,7 +1267,7 @@
       SM.ui.clear(intentSec);
       if (!week.intentions.length) week.intentions.push({ text: '', from: null });
       intentSec.append(
-        el('h3', { text: '실행 의도' }),
+        el('h3', { text: '"언제 하면 무엇을" 정하기(실행 의도)' }),
         el('p', { class: 'muted', text: '"만약 [상황]이면 [행동]" 형식으로 1~3개.' })
       );
       week.intentions.forEach((it, i) => {
@@ -1293,7 +1294,7 @@
       const full = week.intentions.length >= MAX_INTENTIONS;
       const rule = myRuleText(plan);
       intentSec.appendChild(el('button', {
-        type: 'button', class: 'btn', text: '+ 실행 의도 추가', disabled: full,
+        type: 'button', class: 'btn', text: '+ "언제 하면 무엇을" 추가', disabled: full,
         onClick() { week.intentions.push({ text: '', from: null }); flush(); renderIntentions(); const inputs = intentSec.querySelectorAll('input'); inputs[inputs.length - 1].focus(); }
       }));
       intentSec.appendChild(el('details', null,
@@ -1303,10 +1304,10 @@
             type: 'button', class: 'btn btn-ghost pick', text: ruleToIntention(rule),
             onClick() {
               const text = ruleToIntention(rule);
-              if (week.intentions.some((x) => x.text.trim() === text)) { SM.ui.toast('이미 실행 의도에 있어.'); return; }
+              if (week.intentions.some((x) => x.text.trim() === text)) { SM.ui.toast('이미 적어 둔 문장이야.'); return; }
               const empty = week.intentions.find((x) => !x.text.trim() && x.from !== 'lastWeek');
               if (empty) { empty.text = text; empty.from = 'myRule'; }
-              else if (week.intentions.length >= MAX_INTENTIONS) { SM.ui.toast('실행 의도는 3개까지야.'); return; }
+              else if (week.intentions.length >= MAX_INTENTIONS) { SM.ui.toast('"언제 하면 무엇을"은 3개까지야.'); return; }
               else week.intentions.push({ text, from: 'myRule' });
               flush(); renderIntentions();
             }
@@ -1349,7 +1350,7 @@
       const hasNow = Object.keys(week.strategies).some((s) => week.strategies[s].length) ||
         DAY_KEYS.some((d) => week.grid[d].length) || week.intentions.some((x) => x.text.trim() && x.from !== 'lastWeek');
       if (hasNow) {
-        const ok = await SM.ui.confirmDialog('이번 주에 적은 전략·배치표·실행 의도를 지난주 것으로 바꿀까?', { okText: '바꾸기', cancelText: '그대로 두기' });
+        const ok = await SM.ui.confirmDialog('이번 주에 적은 전략·배치표·"언제 하면 무엇을"을 지난주 것으로 바꿀까?', { okText: '바꾸기', cancelText: '그대로 두기' });
         if (!ok) return;
       }
       const keepCarry = week.intentions.filter((x) => x.from === 'lastWeek');
@@ -1768,7 +1769,7 @@
       ) : el('p', { class: 'muted', text: '전략을 고르지 않은 블록이야.' });
 
       const note = el('input', {
-        type: 'text', id: pid + '-note', maxlength: NOTE_MAX, placeholder: '예) 교차 연습은 처음엔 느렸지만 유형 구분이 쉬워졌어',
+        type: 'text', id: pid + '-note', maxlength: NOTE_MAX, placeholder: '예) 섞어 풀기는 처음엔 느렸지만 유형 구분이 쉬워졌어',
         onInput(e) { d.note = e.target.value; counter.textContent = `${NOTE_MAX - d.note.length}자 남음`; changed(); }
       });
       note.value = d.note || '';
