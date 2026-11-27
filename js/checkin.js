@@ -305,7 +305,7 @@
 
     // 6. 모든 지표 70% 이상
     if (['executionRate', 'amountRate', 'strategyRate'].every((k) => t[k] !== null && t[k] !== undefined && t[k] >= GOOD)) {
-      push({ rule: 'allGood', strategyId: 'pretest', text: '모든 지표가 70%를 넘었어! 다음엔 배우기 전에 문제부터 풀어 보는 사전 시험에 도전해 볼까?' });
+      push({ rule: 'allGood', strategyId: 'pretest', text: '모든 지표가 70%를 넘었어! 다음엔 배우기 전에 먼저 풀어 보기(사전 시험)에 도전해 볼까?' });
     }
     return out;
   }

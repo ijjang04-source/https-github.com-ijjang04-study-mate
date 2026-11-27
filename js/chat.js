@@ -6,6 +6,7 @@
   const STEP_DELAY = 400;
   const MAX_HISTORY = 100;
   const MAX_INPUT = 200;
+  const RULE_CHECK_HOUR = 20;   // 저녁 8시부터 '오늘 지켰어?'를 묻는다
 
   // ---------- 흐름 데이터 ----------
   // step: { say } | { card: { title, lines, actions:[{label, go}] } }
@@ -110,8 +111,20 @@
     return best ? best.id : null;
   }
 
+  /** 입력에서 용어 사전의 용어 찾기 → 용어 또는 null. 더 긴 용어가 우선('정교화 질문' > '정교화'). */
+  function findTerm(text, glossary) {
+    const norm = normalize(text);
+    const G = glossary || SM.data.glossary || {};
+    let best = null;
+    Object.keys(G).forEach((t) => {
+      const n = normalize(t);
+      if (n && norm.indexOf(n) !== -1 && (!best || n.length > best.len)) best = { term: t, len: n.length };
+    });
+    return best ? best.term : null;
+  }
+
   /**
-   * 자유 입력 → { intent, subject, strategyId, view, anxious }
+   * 자유 입력 → { intent, subject, strategyId, term, view, anxious }
    * intent: 'crisis' | intents.order 중 하나 | 'unknown'
    * 위기 표현은 다른 낱말이 함께 있어도 가장 먼저 본다.
    */
@@ -119,7 +132,7 @@
     const I = intents || intentsData();
     const norm = normalize(text);
     const has = (w) => norm.indexOf(normalize(w)) !== -1;
-    const out = { intent: 'unknown', subject: findSubject(norm, I), strategyId: findStrategy(norm, I, strategies), view: null, anxious: false };
+    const out = { intent: 'unknown', subject: findSubject(norm, I), strategyId: findStrategy(norm, I, strategies), term: findTerm(norm), view: null, anxious: false };
     if (!norm) return out;
     if ((I.crisis || []).some(has)) { out.intent = 'crisis'; return out; }
     for (const name of I.order) {
@@ -143,7 +156,11 @@
    *   today: 'YYYY-MM-DD', hasResult, testInProgress, hasPlanStrategies,
    *   weekSubmitted, yesterdayUnrecorded: 숫자, todayBlocks: 숫자, todayGridEntries: 숫자,
    *   unread: { count, names: [닉네임] }, dday: { label } | null, todayStrategy: '전략 이름' | null,
-   *   retest: SM.recommend.shouldRetest 결과 배열
+   *   retest: SM.recommend.shouldRetest 결과 배열,
+   *   unchosenSubjects: [과목] 추천은 있는데 하나를 아직 안 고른 과목,
+   *   myRule: '나만의 한 가지 전략 문장' | '',
+   *   todayRuleDone: true | false | null(오늘 아직 체크 안 함), hour: 0~23(지금 시각),
+   *   compareReady: 재검사로 결과가 2개 이상이 됐고 아직 비교를 권하지 않았음
    * }
    * → { id, lines: [문장], choices: [칩] }  (재진단 제안이 있으면 lines·choices 뒤에 덧붙인다)
    */
@@ -158,8 +175,36 @@
         choices: [s.testInProgress ? { label: '이어서 하기', go: '#/test' } : { label: '시작하기', go: '#/test' }]
       };
       return g; // 진단 전에는 재진단 제안을 붙이지 않는다
-    } else if (!s.hasPlanStrategies) {
-      g = { id: 'strategy', lines: ['추천 전략을 아직 플래너에 안 넣었어.'], choices: [{ label: '전략 보기', go: '#/strategy' }] };
+    } else if (s.compareReady) {
+      g = {
+        id: 'compare',
+        lines: ['지난번 결과랑 비교해 볼래?'],
+        choices: [{ label: '결과 기록 보기', go: '#/result/history?compare=1' }, { label: '나중에', next: 'menu' }]
+      };
+    } else if (!s.hasPlanStrategies || (s.unchosenSubjects || []).length) {
+      const sub = (s.unchosenSubjects || [])[0];
+      g = {
+        id: 'strategy',
+        lines: ['과목별 전략을 아직 고르지 않았어. 3개 중 하나를 골라 볼까?'],
+        choices: [sub
+          ? { label: `${sub} 전략 고르기`, go: '#/strategy?s=' + encodeURIComponent(sub) }
+          : { label: '전략 고르기', go: '#/strategy' }]
+      };
+    } else if (!s.myRule) {
+      g = {
+        id: 'myRule',
+        lines: ['고른 전략으로 나만의 한 가지 전략을 만들어 볼까? 한 문장이면 돼.'],
+        choices: [{ label: '한 문장 만들기', go: '#/strategy/seven' }, { label: '나중에', next: 'menu' }]
+      };
+    } else if ((s.todayRuleDone === null || s.todayRuleDone === undefined) && (s.hour || 0) >= RULE_CHECK_HOUR) {
+      g = {
+        id: 'ruleCheck',
+        lines: [`오늘 '${s.myRule}' 지켰어?`],
+        choices: [
+          { label: '예', action: 'ruleDone', value: true, date: today },
+          { label: '아니오', action: 'ruleDone', value: false, date: today }
+        ]
+      };
     } else if (SM.date.weekday(today) === 6 && !s.weekSubmitted) {
       g = {
         id: 'checkin',
@@ -413,6 +458,13 @@
     return subj ? map[subj][0] : null;
   }
 
+  /** 추천은 받았는데 하나를 아직 고르지 않은 과목(추천 순서대로) */
+  function unchosenSubjects(plan) {
+    const strategies = (plan && plan.strategies) || {};
+    const chosen = SM.planner.chosenOf(plan);
+    return Object.keys(strategies).filter((sub) => Array.isArray(strategies[sub]) && strategies[sub].length && !chosen[sub]);
+  }
+
   function collectState(profile, now) {
     const sid = profile.sid;
     const date = now instanceof Date ? now : new Date();
@@ -444,11 +496,40 @@
       unread: { count: SM.feed.unreadFor(sid), names: SM.feed.unreadFrom(sid) },
       dday: SM.planner.nextDday(today),
       todayStrategy,
-      retest: SM.recommend.shouldRetest(results, checkins, date)
+      retest: SM.recommend.shouldRetest(results, checkins, date),
+      unchosenSubjects: unchosenSubjects(plan),
+      myRule: SM.planner.myRuleText(plan),
+      todayRuleDone: (() => { const v = SM.planner.getDayData(today).myRuleDone; return v === true || v === false ? v : null; })(),
+      hour: date.getHours(),
+      compareReady: compareReady(results, (SM.store.get(metaKey(sid), {}) || {}).compareOfferedFor)
     };
   }
 
   function metaKey(sid) { return SM.keys.chatMeta(sid); }
+
+  /** 결과가 2개 이상이고 가장 최근 결과로 아직 비교를 권하지 않았으면 true */
+  function compareReady(results, offeredFor) {
+    const list = Array.isArray(results) ? results : [];
+    const last = list[list.length - 1];
+    return list.length >= 2 && !!last && (last.id || last.takenAt) !== offeredFor;
+  }
+
+  /** 비교를 권했다고 적어 둔다(같은 결과로 두 번 권하지 않게) */
+  function markCompareOffered(sid, results) {
+    const last = (results || [])[(results || []).length - 1];
+    if (!last) return;
+    SM.store.update(metaKey(sid), (m) => Object.assign({}, m || {}, { compareOfferedFor: last.id || last.takenAt }), {});
+  }
+
+  /** 재검사를 마친 직후(test.js에서 부름): 결과가 2개 이상이면 비교를 권한다. → 권했으면 true */
+  function offerCompare(sid) {
+    const results = SM.store.get(SM.keys.results(sid), []);
+    const meta = SM.store.get(metaKey(sid), {}) || {};
+    if (!compareReady(results, meta.compareOfferedFor)) return false;
+    markCompareOffered(sid, results);
+    card({ title: '결과 기록', lines: ['지난번 결과랑 비교해 볼래?'], actions: [{ label: '결과 기록 보기', go: '#/result/history?compare=1' }] });
+    return true;
+  }
 
   /** 하루 한 번 첫 인사. 이미 했으면 false. */
   function greet(options) {
@@ -462,12 +543,20 @@
     let g;
     try {
       g = pickGreeting(collectState(p));
+      if (g.id === 'compare') markCompareOffered(p.sid, SM.store.get(SM.keys.results(p.sid), []));
     } catch (e) {
       console.warn('[chat] 인사 상태 계산 실패', e);
       g = { lines: ['무엇을 해 볼까?'], choices: MENU_CHOICES };
     }
     return runSteps(g.lines.map((l) => ({ say: l })).concat([{ choices: g.choices }])).then(() => true);
   }
+
+  // '오늘 (문장) 지켰어?' 예/아니오 → 그날 일간 기록(myRuleDone)에 바로 저장
+  actions.ruleDone = function (choice) {
+    const iso = choice.date || SM.date.today();
+    SM.planner.setMyRuleDone(iso, choice.value === true);
+    say(choice.value === true ? '좋아! 오늘 기록에 지켰다고 남겨 뒀어.' : '괜찮아. 오늘은 못 지켰다고 남겨 뒀어. 내일 다시 해 보자.');
+  };
 
   // 오늘 블록을 비운 채로 시작(배치표에서 미리 만들지 않음)
   actions.blankDay = function () {
@@ -525,6 +614,37 @@
           { say: '10분짜리 작은 블록부터 해 볼까?' },
           { choices: [{ label: '10분 블록 만들기', action: 'smallBlock' }, { label: '오늘은 쉴래', next: 'rest' }] }
         ];
+      case 'term': {
+        const G = SM.data.glossary || {};
+        const t = m.term && G[m.term] ? m.term : null;
+        if (!t) {
+          return [
+            { say: "어떤 말이 궁금해? '인출 연습 뜻이 뭐야?'처럼 물어봐 줘." },
+            { choices: [{ label: '용어 풀이 모음', go: '#/strategy/terms' }] }
+          ];
+        }
+        return [
+          { say: `${josa(t, '은', '는')} 쉽게 말해 ${josa(G[t].easy, '이야.', '야.')}` },
+          { say: `예) ${G[t].example}` },
+          { choices: [{ label: '용어 풀이 모음', go: '#/strategy/terms' }] }
+        ];
+      }
+      case 'myRule': {
+        const rule = SM.planner.myRuleText(plan);
+        if (!latest) {
+          return [{ say: '진단을 하고 전략을 고르면 나만의 한 가지 전략을 만들 수 있어.' }, { choices: [{ label: '진단 시작하기', go: '#/test' }] }];
+        }
+        if (!rule) {
+          return [{ say: '고른 전략으로 나만의 한 가지 전략을 만들어 볼까? 한 문장이면 돼.' }, { choices: [{ label: '한 문장 만들기', go: '#/strategy/seven' }] }];
+        }
+        return [{
+          card: {
+            title: '나만의 한 가지 전략',
+            lines: [rule, '플래너 일간 화면 맨 위에서 오늘 지켰는지 체크할 수 있어.'],
+            actions: [{ label: '문장 바꾸기', go: '#/strategy/seven' }, { label: '오늘 체크하기', go: '#/planner/day' }]
+          }
+        }];
+      }
       case 'history':
         if (!latest) {
           return [{ say: '아직 진단 결과가 없어. 진단을 하면 결과가 기록으로 쌓여.' }, { choices: [{ label: '진단 시작하기', go: '#/test' }] }];
@@ -673,7 +793,7 @@
     say, card, choices, notify, run, route, greet,
     vars, varProviders, actions, botName,
     fill, fillCard, pushHistory, josa, normalize,
-    findSubject, findStrategy, matchIntent, pickGreeting, replyFor, collectState,
+    findSubject, findStrategy, findTerm, matchIntent, pickGreeting, replyFor, collectState, unchosenSubjects, compareReady, offerCompare,
     MAX_HISTORY, BOT_NAME_MAX, DEFAULT_BOT_NAME
   };
 

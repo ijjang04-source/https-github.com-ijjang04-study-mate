@@ -365,6 +365,8 @@
     }, []);
     SM.store.remove(SM.keys.testProgress(p.sid));
     if (SM.chat && typeof SM.chat.notify === 'function') SM.chat.notify('학습 스타일 진단을 마쳤어. 결과를 정리해 뒀어.');
+    // 재검사로 결과가 2개 이상이 됐으면 바로 비교를 권한다
+    if (SM.chat && typeof SM.chat.offerCompare === 'function') SM.chat.offerCompare(p.sid);
     location.hash = '#/result';
   }
 

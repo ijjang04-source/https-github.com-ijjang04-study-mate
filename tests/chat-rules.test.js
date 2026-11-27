@@ -8,7 +8,8 @@
       today: '2026-11-19',
       hasResult: true, testInProgress: false, hasPlanStrategies: true,
       weekSubmitted: false, yesterdayUnrecorded: 0, todayBlocks: 2, todayGridEntries: 2,
-      unread: { count: 0, names: [] }, dday: null, todayStrategy: null, retest: []
+      unread: { count: 0, names: [] }, dday: null, todayStrategy: null, retest: [],
+      unchosenSubjects: [], myRule: '나는 저녁 9시가 되면 영단어 20개를 떠올려 본다.', todayRuleDone: null, hour: 10, compareReady: false
     }, over || {});
   }
   const id = (o) => C.pickGreeting(st(o)).id;
@@ -27,11 +28,55 @@
     assert.equal(g3.lines.length, 1);
   });
 
-  test('chat.pickGreeting: 2 전략 미저장', () => {
-    const g = C.pickGreeting(st({ hasPlanStrategies: false, todayBlocks: 0 }));
+  test('chat.pickGreeting: 2 과목별 전략을 아직 안 고름 → 고르지 않은 과목 탭으로', () => {
+    const g = C.pickGreeting(st({ unchosenSubjects: ['영어', '과학'], todayBlocks: 0 }));
     assert.equal(g.id, 'strategy');
-    assert.equal(g.lines[0], '추천 전략을 아직 플래너에 안 넣었어.');
-    assert.equal(g.choices[0].go, '#/strategy');
+    assert.equal(g.lines[0], '과목별 전략을 아직 고르지 않았어. 3개 중 하나를 골라 볼까?');
+    assert.deepEqual(g.choices[0], { label: '영어 전략 고르기', go: '#/strategy?s=' + encodeURIComponent('영어') });
+    const g2 = C.pickGreeting(st({ hasPlanStrategies: false }));
+    assert.deepEqual([g2.id, g2.choices[0].go], ['strategy', '#/strategy'], '추천을 아직 저장 안 했으면 전략 탭으로');
+  });
+
+  test('chat.pickGreeting: 2-1 전략은 골랐는데 나만의 한 가지 전략이 없음', () => {
+    const g = C.pickGreeting(st({ myRule: '', yesterdayUnrecorded: 2 }));
+    assert.equal(g.id, 'myRule');
+    assert.equal(g.lines[0], '고른 전략으로 나만의 한 가지 전략을 만들어 볼까? 한 문장이면 돼.');
+    assert.equal(g.choices[0].go, '#/strategy/seven');
+    assert.equal(id({ myRule: '', unchosenSubjects: ['수학'] }), 'strategy', '고르지 않은 과목이 있으면 그게 먼저');
+  });
+
+  test('chat.pickGreeting: 2-2 저녁 8시 이후 + 오늘 체크 안 함 → "오늘 (문장) 지켰어?" 예/아니오', () => {
+    const g = C.pickGreeting(st({ hour: 20, yesterdayUnrecorded: 1 }));
+    assert.equal(g.id, 'ruleCheck');
+    assert.equal(g.lines[0], "오늘 '나는 저녁 9시가 되면 영단어 20개를 떠올려 본다.' 지켰어?");
+    assert.deepEqual(g.choices, [
+      { label: '예', action: 'ruleDone', value: true, date: '2026-11-19' },
+      { label: '아니오', action: 'ruleDone', value: false, date: '2026-11-19' }
+    ]);
+    assert.equal(id({ hour: 19 }), 'daily', '8시 전에는 묻지 않음');
+    assert.equal(id({ hour: 21, todayRuleDone: false }), 'daily', '이미 체크했으면(아니오도) 묻지 않음');
+    assert.equal(id({ hour: 23, todayRuleDone: true }), 'daily');
+    assert.equal(id({ hour: 22, myRule: '' }), 'myRule', '문장이 없으면 만들기부터');
+  });
+
+  test('chat.pickGreeting: 2-3 재검사로 결과가 2개 이상이 된 직후 → 비교 권하기', () => {
+    const g = C.pickGreeting(st({ compareReady: true, unchosenSubjects: ['수학'], myRule: '' }));
+    assert.equal(g.id, 'compare');
+    assert.equal(g.lines[0], '지난번 결과랑 비교해 볼래?');
+    assert.equal(g.choices[0].go, '#/result/history?compare=1');
+    assert.equal(id({ compareReady: true, hasResult: false }), 'test', '진단 중이면 진단이 먼저');
+    // compareReady 계산: 결과 2개 이상 + 가장 최근 결과로 아직 안 권함
+    const two = [{ id: 'a', takenAt: '2026-10-01' }, { id: 'b', takenAt: '2026-11-01' }];
+    assert.equal(C.compareReady(two, undefined), true);
+    assert.equal(C.compareReady(two, 'b'), false, '같은 결과로 두 번 권하지 않음');
+    assert.equal(C.compareReady(two, 'a'), true, '새 결과가 생기면 다시');
+    assert.equal(C.compareReady(two.slice(0, 1), undefined), false, '결과 1개면 비교할 게 없음');
+  });
+
+  test('chat.unchosenSubjects: 추천은 있는데 고르지 않은 과목만', () => {
+    const plan = { strategies: { 수학: ['retrieval', 'interleave', 'spacing'], 영어: ['retrieval', 'spacing', 'chunking'], 국어: [] }, chosen: { 수학: 'interleave', 과학: 'nope' } };
+    assert.deepEqual(C.unchosenSubjects(plan), ['영어']);
+    assert.deepEqual(C.unchosenSubjects(null), []);
   });
 
   test('chat.pickGreeting: 3 일요일 + 점검표 미제출', () => {
